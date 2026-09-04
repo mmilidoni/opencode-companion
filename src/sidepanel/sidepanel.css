@@ -55,21 +55,24 @@ body {
 
 .sessions {
   display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 180px;
   padding: 8px 10px;
   border-bottom: 1px solid #eaeef2;
 }
 
 .session-chip {
   flex: none;
-  max-width: 180px;
+  width: 100%;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 4px 10px;
+  padding: 6px 10px;
   border: 1px solid #d0d7de;
-  border-radius: 999px;
+  border-radius: 6px;
   background: #f6f8fa;
   font-size: 12px;
   cursor: pointer;

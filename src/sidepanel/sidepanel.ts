@@ -75,7 +75,8 @@ async function refreshSessions(): Promise<void> {
     return;
   }
   sessionsEl.textContent = "";
-  for (const session of result.value) {
+  const sorted = [...result.value].sort((a, b) => b.time.updated - a.time.updated);
+  for (const session of sorted) {
     sessionsEl.appendChild(renderSessionChip(session));
   }
 }
