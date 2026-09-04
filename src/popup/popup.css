@@ -52,6 +52,14 @@ input {
   font-size: 13px;
 }
 
+select {
+  padding: 6px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+}
+
 .actions {
   display: flex;
   gap: 8px;

@@ -1,4 +1,5 @@
 import { getSettings, saveSettings } from "../shared/storage.js";
+import type { DeliveryMode } from "../shared/storage.js";
 import type { ConnectionResult, OpenCodeError } from "../shared/opencode.js";
 import type { BackgroundMessage } from "../shared/types.js";
 
@@ -8,11 +9,13 @@ const statusDetail = document.getElementById("status-detail") as HTMLParagraphEl
 const form = document.getElementById("settings-form") as HTMLFormElement;
 const serverUrlInput = document.getElementById("server-url") as HTMLInputElement;
 const serverPasswordInput = document.getElementById("server-password") as HTMLInputElement;
+const deliveryModeSelect = document.getElementById("delivery-mode") as HTMLSelectElement;
 const testButton = document.getElementById("test-connection") as HTMLButtonElement;
 
 const savedSettings = await getSettings();
 serverUrlInput.value = savedSettings.serverUrl;
 serverPasswordInput.value = savedSettings.serverPassword;
+deliveryModeSelect.value = savedSettings.deliveryMode;
 
 function renderResult(result: ConnectionResult): void {
   statusDot.dataset.state = result.ok ? "ok" : "error";
@@ -68,8 +71,9 @@ form.addEventListener("submit", (event) => {
     return;
   }
   const serverPassword = serverPasswordInput.value;
+  const deliveryMode = deliveryModeSelect.value as DeliveryMode;
   void (async () => {
-    await saveSettings({ ...savedSettings, serverUrl, serverPassword });
+    await saveSettings({ ...savedSettings, serverUrl, serverPassword, deliveryMode });
     await runConnectionCheck(serverUrl, serverPassword);
   })();
 });
