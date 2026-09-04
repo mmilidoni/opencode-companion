@@ -31,6 +31,8 @@ export interface OpenCodeApi {
   abort(sessionId: string): Promise<Result<void>>;
   appendPromptTui(text: string): Promise<Result<void>>;
   submitPromptTui(): Promise<Result<void>>;
+  /** `/event` SSE bus; auto-reconnects with exponential backoff. */
+  eventSubscribe(): Promise<AsyncIterable<unknown>>;
 }
 
 function toBase64Utf8(value: string): string {
@@ -195,6 +197,15 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
           throw new TuiError("The opencode TUI rejected the submit — is a TUI attached to this server?");
         }
       });
+    },
+    async eventSubscribe() {
+      // The generated SSE client calls global fetch directly and ignores a
+      // custom fetch, so the basic-auth header must ride on the request
+      // headers instead of the fetch wrapper.
+      const result = await client.event.subscribe({
+        headers: authorization ? { Authorization: authorization } : undefined,
+      } as never);
+      return result.stream as AsyncIterable<unknown>;
     },
   };
 }

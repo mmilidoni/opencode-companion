@@ -24,6 +24,11 @@
         <option value="tui">Open TUI prompt</option>
       </select>
 
+      <label class="check-row">
+        <input type="checkbox" id="auto-open-panel" />
+        Auto-open side panel after sending
+      </label>
+
       <div class="actions">
         <button type="button" id="test-connection">Test connection</button>
         <button type="submit">Save</button>
@@ -31,6 +36,8 @@
 
       <p id="status-detail" class="detail" hidden></p>
     </form>
+
+    <button type="button" id="open-panel" class="open-panel">Open side panel</button>
 
     <script type="module" src="popup.js"></script>
   </body>
