@@ -2,7 +2,7 @@ import { createOpenCodeApi } from "../shared/opencode.js";
 import type { OpenCodeError } from "../shared/opencode.js";
 import { composePrompt } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
-import { getSettings, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
+import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
 import type { TextPartInput } from "@opencode-ai/sdk/client";
@@ -17,7 +17,12 @@ const COMMAND_SEND_SELECTION = "send-selection";
 // Cached so gesture handlers can read autoOpenPanel without any await —
 // chrome.sidePanel.open() requires being called synchronously in the
 // user-gesture handler (any async gap before it invalidates the gesture).
-let cachedSettings: Settings = await getSettings();
+// No top-level await: module service workers can't evaluate it, so the
+// cache starts at the defaults and refreshes as soon as the SW wakes.
+let cachedSettings: Settings = DEFAULT_SETTINGS;
+void getSettings().then((settings) => {
+  cachedSettings = settings;
+});
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) {
     cachedSettings = { ...cachedSettings, ...(changes.settings.newValue as Settings) };
