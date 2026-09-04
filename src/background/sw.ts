@@ -1,6 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { OpenCodeError } from "../shared/opencode.js";
-import { composePrompt } from "../shared/prompt.js";
+import { composePrompt, parseGithubIssue } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
 import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
@@ -177,7 +177,8 @@ async function readSelection(tabId: number): Promise<string | undefined> {
 }
 
 async function handleSelection(selection: string, tab?: chrome.tabs.Tab): Promise<void> {
-  const source: PromptSource = { title: tab?.title ?? "Selected text", url: tab?.url ?? "" };
+  const url = tab?.url ?? "";
+  const source: PromptSource = { title: tab?.title ?? "Selected text", url, issue: parseGithubIssue(url) };
   await composeAndSend("selection", selection, source);
 }
 
@@ -191,7 +192,8 @@ async function handlePage(tab?: chrome.tabs.Tab): Promise<void> {
     notify("send-error", "Send to OpenCode failed", "Could not read the page content.");
     return;
   }
-  const source: PromptSource = { title: captured.title || tab.title || "Web page", url: captured.url || tab.url || "" };
+  const url = captured.url || tab.url || "";
+  const source: PromptSource = { title: captured.title || tab.title || "Web page", url, issue: parseGithubIssue(url) };
   await composeAndSend("page", captured.text, source);
 }
 
