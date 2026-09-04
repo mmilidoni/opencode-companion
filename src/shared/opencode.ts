@@ -4,7 +4,8 @@ import type { Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/cli
 export type OpenCodeError =
   | { kind: "unreachable"; detail: string }
   | { kind: "unauthorized"; passwordProvided: boolean }
-  | { kind: "server"; status: number; detail: string };
+  | { kind: "server"; status: number; detail: string }
+  | { kind: "tui"; detail: string };
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: OpenCodeError };
 
@@ -45,6 +46,8 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+class TuiError extends Error {}
+
 function statusOf(err: unknown): number | undefined {
   if (err instanceof Error && err.cause !== undefined && typeof err.cause === "object") {
     const status = (err.cause as { status?: unknown }).status;
@@ -71,6 +74,9 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     try {
       return { ok: true, value: await fn() };
     } catch (err) {
+      if (err instanceof TuiError) {
+        return { ok: false, error: { kind: "tui", detail: err.message } };
+      }
       const status = statusOf(err);
       if (status === 401) {
         return { ok: false, error: { kind: "unauthorized", passwordProvided } };
@@ -176,12 +182,18 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     },
     async appendPromptTui(text) {
       return run(async () => {
-        await client.tui.appendPrompt({ body: { text }, throwOnError: true });
+        const ok = await client.tui.appendPrompt({ body: { text }, throwOnError: true });
+        if (ok.data === false) {
+          throw new TuiError("The opencode TUI rejected the prompt — is a TUI attached to this server?");
+        }
       });
     },
     async submitPromptTui() {
       return run(async () => {
-        await client.tui.submitPrompt({ throwOnError: true });
+        const ok = await client.tui.submitPrompt({ throwOnError: true });
+        if (ok.data === false) {
+          throw new TuiError("The opencode TUI rejected the submit — is a TUI attached to this server?");
+        }
       });
     },
   };

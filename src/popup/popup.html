@@ -18,6 +18,12 @@
       <label for="server-password">Password</label>
       <input id="server-password" type="password" autocomplete="off" spellcheck="false" />
 
+      <label for="delivery-mode">Send to</label>
+      <select id="delivery-mode">
+        <option value="headless">New opencode session</option>
+        <option value="tui">Open TUI prompt</option>
+      </select>
+
       <div class="actions">
         <button type="button" id="test-connection">Test connection</button>
         <button type="submit">Save</button>
