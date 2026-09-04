@@ -2,7 +2,7 @@ import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
 import { getSettings, addExtensionSessionId, getExtensionSessionIds } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
-import type { Session, TextPart } from "@opencode-ai/sdk/client";
+import type { TextPart } from "@opencode-ai/sdk/client";
 
 const HEALTH_POLL_MS = 5_000;
 
@@ -13,7 +13,7 @@ interface StreamEvent {
 
 const connDot = document.getElementById("conn-dot") as HTMLSpanElement;
 const connText = document.getElementById("conn-text") as HTMLSpanElement;
-const sessionsEl = document.getElementById("sessions") as HTMLDivElement;
+const sessionSelect = document.getElementById("session-select") as HTMLSelectElement;
 const threadEl = document.getElementById("thread") as HTMLElement;
 const emptyEl = document.getElementById("thread-empty") as HTMLDivElement;
 const messagesEl = document.getElementById("messages") as HTMLDivElement;
@@ -74,37 +74,34 @@ async function refreshSessions(): Promise<void> {
     setConnected(false);
     return;
   }
-  sessionsEl.textContent = "";
+  sessionSelect.textContent = "";
   const extensionIds = new Set(await getExtensionSessionIds());
   const sorted = [...result.value]
     .filter((session) => extensionIds.has(session.id))
     .sort((a, b) => b.time.updated - a.time.updated);
   if (sorted.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "sessions-empty";
-    empty.textContent = "No sessions from this browser yet. Right-click a page and pick \"Send selection to OpenCode\".";
-    sessionsEl.appendChild(empty);
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "No sessions from this browser yet — right-click a page to send";
+    placeholder.disabled = true;
+    sessionSelect.appendChild(placeholder);
+    sessionSelect.value = "";
     return;
   }
   for (const session of sorted) {
-    sessionsEl.appendChild(renderSessionChip(session));
+    const option = document.createElement("option");
+    option.value = session.id;
+    option.textContent = session.title || "Untitled";
+    option.title = session.id;
+    option.selected = session.id === selectedSessionId;
+    sessionSelect.appendChild(option);
   }
-}
-
-function renderSessionChip(session: Session): HTMLButtonElement {
-  const chip = document.createElement("button");
-  chip.className = "session-chip";
-  chip.classList.toggle("active", session.id === selectedSessionId);
-  chip.title = session.id;
-  chip.textContent = session.title || "Untitled";
-  chip.addEventListener("click", () => {
-    void selectSession(session.id);
-  });
-  return chip;
+  sessionSelect.value = selectedSessionId ?? "";
 }
 
 async function selectSession(id: string): Promise<void> {
   selectedSessionId = id;
+  sessionSelect.value = id;
   messageEls.clear();
   partEls.clear();
   updateControls();
@@ -279,6 +276,13 @@ abortBtn.addEventListener("click", () => {
 });
 newSessionBtn.addEventListener("click", () => {
   void createNewSession();
+});
+
+sessionSelect.addEventListener("change", () => {
+  const id = sessionSelect.value;
+  if (id) {
+    void selectSession(id);
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
