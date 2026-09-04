@@ -1,6 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
+import { getSettings, saveSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
 import type { Command } from "@opencode-ai/sdk/client";
@@ -30,6 +30,7 @@ const deleteAllBtn = document.getElementById("delete-all") as HTMLButtonElement;
 const commandSelect = document.getElementById("command-select") as HTMLSelectElement;
 const commandArgs = document.getElementById("command-args") as HTMLInputElement;
 const runCommandBtn = document.getElementById("run-command") as HTMLButtonElement;
+const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
 
 let settings: Settings = await getSettings();
 let api: OpenCodeApi = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
@@ -120,6 +121,53 @@ async function runSelectedCommand(): Promise<void> {
   }
   commandArgs.value = "";
   await reloadThread();
+}
+
+async function refreshModels(): Promise<void> {
+  const providerId = settings.modelProviderId;
+  if (!providerId) {
+    modelSelect.disabled = true;
+    modelSelect.textContent = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Set a provider in Options";
+    placeholder.disabled = true;
+    modelSelect.appendChild(placeholder);
+    modelSelect.value = "";
+    return;
+  }
+  modelSelect.disabled = false;
+  // Seed the saved selection so it renders before/without a server response.
+  modelSelect.textContent = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Server default";
+  modelSelect.appendChild(placeholder);
+  if (settings.modelId) {
+    const seeded = document.createElement("option");
+    seeded.value = settings.modelId;
+    seeded.textContent = settings.modelId;
+    modelSelect.appendChild(seeded);
+  }
+  const result = await api.listProviders();
+  if (result.ok) {
+    const provider = result.value.providers.find((p) => p.id === providerId);
+    const modelIds = Object.keys(provider?.models ?? {});
+    if (modelIds.length > 0) {
+      modelSelect.textContent = "";
+      const livePlaceholder = document.createElement("option");
+      livePlaceholder.value = "";
+      livePlaceholder.textContent = "Server default";
+      modelSelect.appendChild(livePlaceholder);
+      for (const modelId of modelIds) {
+        const option = document.createElement("option");
+        option.value = modelId;
+        option.textContent = modelId;
+        modelSelect.appendChild(option);
+      }
+    }
+  }
+  modelSelect.value = settings.modelId;
 }
 
 async function pollHealth(): Promise<void> {
@@ -438,6 +486,11 @@ commandSelect.addEventListener("change", () => {
   updateControls();
 });
 
+modelSelect.addEventListener("change", () => {
+  settings.modelId = modelSelect.value;
+  void saveSettings(settings);
+});
+
 runCommandBtn.addEventListener("click", () => {
   void runSelectedCommand();
 });
@@ -451,8 +504,14 @@ sessionSelect.addEventListener("change", () => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) {
+    const previousProviderId = settings.modelProviderId;
     settings = { ...settings, ...(changes.settings.newValue as Settings) };
     api = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
+    if (settings.modelProviderId !== previousProviderId) {
+      void refreshModels();
+    } else {
+      modelSelect.value = settings.modelId;
+    }
     void pollHealth();
   }
 });
@@ -476,6 +535,7 @@ async function consumePendingSession(): Promise<void> {
 }
 
 void (async () => {
+  void refreshModels();
   await pollHealth();
   await refreshSessions();
   await consumePendingSession();
