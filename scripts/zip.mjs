@@ -20,7 +20,11 @@ cpSync(join(root, "manifest.json"), join(staging, "manifest.json"));
 cpSync(join(root, "dist"), join(staging, "dist"), { recursive: true });
 cpSync(join(root, "icons"), join(staging, "icons"), { recursive: true });
 
-// manifest.json must sit at the zip root for the Chrome Web Store.
-execFileSync("tar", ["-a", "-cf", zipPath, "-C", staging, "."], { stdio: "inherit" });
+// manifest.json must sit at the zip root for the Chrome Web Store. Pass
+// explicit names (not ".") so entries have no "./" prefix — Windows Explorer's
+// zip viewer shows "./"-prefixed archives as empty.
+execFileSync("tar", ["-a", "-cf", zipPath, "-C", staging, "manifest.json", "dist", "icons"], {
+  stdio: "inherit",
+});
 rmSync(staging, { recursive: true, force: true });
 console.log(`Created ${zipPath}`);
