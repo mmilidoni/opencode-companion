@@ -3,6 +3,7 @@ import type { OpenCodeError } from "../shared/opencode.js";
 import { composePrompt } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
 import { getSettings, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
+import type { Settings } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
 import type { TextPartInput } from "@opencode-ai/sdk/client";
 
@@ -12,6 +13,16 @@ const BADGE_FLASH_MS = 2_500;
 const MENU_SEND_SELECTION = "send-selection";
 const MENU_SEND_PAGE = "send-page";
 const COMMAND_SEND_SELECTION = "send-selection";
+
+// Cached so gesture handlers can read autoOpenPanel without any await —
+// chrome.sidePanel.open() requires being called synchronously in the
+// user-gesture handler (any async gap before it invalidates the gesture).
+let cachedSettings: Settings = await getSettings();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.settings) {
+    cachedSettings = { ...cachedSettings, ...(changes.settings.newValue as Settings) };
+  }
+});
 
 function setBadge(state: "ok" | "error" | "unknown"): void {
   const color = state === "ok" ? "#22c55e" : state === "error" ? "#ef4444" : "#6b7280";
@@ -101,23 +112,24 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
   }
   if (settings.autoOpenPanel) {
     await setPendingSessionId(session.value);
-    await openPanel();
-    // The panel may already be open — tell it to select the new session now.
+    // The panel was already opened synchronously in the gesture handler;
+    // tell it (if it's open) to select the new session now.
     void chrome.runtime.sendMessage({ type: "select-session", sessionId: session.value }).catch(() => {});
   }
   notify("send-ok", "Sent to OpenCode", "Prompt sent to a new session.");
   flashBadge();
 }
 
-async function openPanel(): Promise<void> {
+// Must stay synchronous: no await may precede chrome.sidePanel.open() or the
+// user-gesture context is lost and the call rejects.
+function openPanelIfConfigured(tab?: chrome.tabs.Tab): void {
+  if (!cachedSettings.autoOpenPanel || tab?.windowId === undefined) {
+    return;
+  }
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.windowId !== undefined) {
-      await chrome.sidePanel.open({ windowId: tab.windowId });
-    }
+    void chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
   } catch {
-    // Not a user-gesture context (e.g., some command paths) — panel stays
-    // closed; the user can still open it from the popup.
+    // Ignore — gesture context unavailable.
   }
 }
 
@@ -201,16 +213,38 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_SEND_SELECTION && info.selectionText) {
+    openPanelIfConfigured(tab);
     void handleSelection(info.selectionText, tab);
   } else if (info.menuItemId === MENU_SEND_PAGE) {
+    openPanelIfConfigured(tab);
     void handlePage(tab);
   }
 });
 
+// Tracked so the keyboard-command handler can call sidePanel.open()
+// synchronously (the shortcut gesture is even shorter-lived).
+let activeWindowId: number | undefined;
+chrome.tabs.onActivated.addListener((info) => {
+  void chrome.tabs
+    .get(info.tabId)
+    .then((tab) => {
+      activeWindowId = tab.windowId;
+    })
+    .catch(() => {});
+});
+
 chrome.commands.onCommand.addListener((command) => {
-  if (command === COMMAND_SEND_SELECTION) {
-    void sendSelectionFromActiveTab();
+  if (command !== COMMAND_SEND_SELECTION) {
+    return;
   }
+  if (cachedSettings.autoOpenPanel && activeWindowId !== undefined) {
+    try {
+      void chrome.sidePanel.open({ windowId: activeWindowId }).catch(() => {});
+    } catch {
+      // Ignore — gesture context unavailable.
+    }
+  }
+  void sendSelectionFromActiveTab();
 });
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -232,4 +266,10 @@ void checkHealth();
 scheduleHealthCheck();
 chrome.runtime.onStartup.addListener(() => {
   void checkHealth();
+  void chrome.tabs
+    .query({ active: true, currentWindow: true })
+    .then((tabs) => {
+      activeWindowId = tabs[0]?.windowId;
+    })
+    .catch(() => {});
 });

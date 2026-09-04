@@ -5,6 +5,7 @@ import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
 
 const HEALTH_POLL_MS = 5_000;
+const PENDING_POLL_MS = 1_500;
 
 interface StreamEvent {
   type?: string;
@@ -296,21 +297,30 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const msg = message as { type?: string; sessionId?: string };
   if (msg.type === "select-session" && msg.sessionId) {
-    void clearPendingSessionId();
     void selectSession(msg.sessionId);
+    void clearPendingSessionId();
   }
 });
+
+async function consumePendingSession(): Promise<void> {
+  const pending = await getPendingSessionId();
+  if (!pending) {
+    return;
+  }
+  await clearPendingSessionId();
+  await refreshSessions();
+  await selectSession(pending);
+}
 
 void (async () => {
   await pollHealth();
   await refreshSessions();
-  const pending = await getPendingSessionId();
-  if (pending) {
-    await clearPendingSessionId();
-    await selectSession(pending);
-  }
+  await consumePendingSession();
   void subscribeToEvents();
 })();
 setInterval(() => {
   void pollHealth();
 }, HEALTH_POLL_MS);
+setInterval(() => {
+  void consumePendingSession();
+}, PENDING_POLL_MS);
