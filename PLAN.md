@@ -315,21 +315,28 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 5. Session deletion — side-panel "Delete" (current) and "Delete all" (all extension-created sessions), both `confirm()`-gated; `DELETE /session/{id}` per session (no bulk endpoint)
 
 **Still deferred:**
-6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost)
+6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost); the manifest key stays removed from the shipped build until then
 7. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
 ## 10. CWS submission checklist
 
+- [x] Privacy policy drafted (`PRIVACY.md`, covers CWS data categories)
 - [ ] One-time $5 developer registration
-- [ ] Privacy policy at public URL (GitHub Pages: `PRIVACY.md`)
-- [ ] Single-purpose statement in listing
-- [ ] Justification for each permission (template in §4)
-- [ ] Data-use disclosure: page content sent to the user's own local opencode server only
-- [ ] Icons 16/48/128 + screenshots 1280×800 + small promo tile 440×280
+- [ ] Privacy policy live at public URL — GitHub Pages: merge `phase/4-cws` →
+      `main`, push, then Settings → Pages → Deploy from a branch → `main` / `(root)`;
+      verify `https://mmilidoni.github.io/opencode-companion/PRIVACY.html` (root
+      `index.html` is the landing page; don't rename the repo — the URL is tied to it)
+- [x] Single-purpose statement, short/detailed description, permission
+      justification, data-use disclosure — `STORE.md`
+- [ ] Screenshots 1280×800 (side panel streaming, context menu, popup config,
+      options page) + small promo tile 440×280 + marquee 1400×560 (optional)
 - [ ] `npm run zip` artifact; version matches `manifest.json` and `package.json`
-- [ ] Naming: "Companion for OpenCode", description notes "unofficial", links repo
+- [x] Naming: "Companion for OpenCode", description notes "unofficial", links repo
+- [ ] Developer email set in the CWS developer account
+- [ ] `optional_host_permissions` removed from manifest for the first review
+      (re-add only when remote servers ship — §9 item 6)
 
 ---
 

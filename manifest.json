@@ -6,7 +6,6 @@
   "minimum_chrome_version": "116",
   "permissions": ["storage", "contextMenus", "activeTab", "scripting", "sidePanel", "notifications"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "dist/sw.js", "type": "module" },
   "action": {
     "default_popup": "dist/popup/popup.html",

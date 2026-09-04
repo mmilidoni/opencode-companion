@@ -36,6 +36,17 @@ operate; nothing is sent to the extension developer or to any third party.
   configure (plus Chrome's own extension services).
 - No automatic or background reading of page content.
 
+## Data collection (Chrome Web Store categories)
+
+| Category | Collected? | Details |
+|---|---|---|
+| Website content | Yes — only on explicit action | Page text or selected text you choose to send; transmitted to your local opencode server and nowhere else |
+| Authentication information | Yes — if configured | The opencode server password you enter; stored in `chrome.storage.local` on your machine only |
+| Web history | No | — |
+| User activity | No | — |
+| Personal communications | No | — |
+| Location / Financial / Health / Personally identifiable information | No | — |
+
 ## Permissions
 
 | Permission | Why it is needed |
@@ -69,4 +80,4 @@ If this policy changes, the updated version will be posted here.
 
 ## Contact
 
-Open an issue on the [extension repository](https://github.com/your-account/opencode-companion).
+Open an issue on the [extension repository](https://github.com/mmilidoni/opencode-companion).
