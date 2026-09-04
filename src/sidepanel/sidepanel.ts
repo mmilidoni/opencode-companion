@@ -3,6 +3,8 @@ import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/o
 import { getSettings, addExtensionSessionId, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 const HEALTH_POLL_MS = 5_000;
 const PENDING_POLL_MS = 1_500;
@@ -29,7 +31,7 @@ let connected = false;
 let selectedSessionId: string | null = null;
 let thread: MessageThreadEntry[] = [];
 const messageEls = new Map<string, HTMLDivElement>();
-const partEls = new Map<string, HTMLParagraphElement>();
+const partEls = new Map<string, HTMLElement>();
 
 function describeError(error: OpenCodeError): string {
   switch (error.kind) {
@@ -143,6 +145,10 @@ function renderThread(): void {
   scrollToBottom();
 }
 
+function renderMarkdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text, { async: false }));
+}
+
 function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
   const bubble = document.createElement("div");
   bubble.className = `bubble ${entry.info.role}`;
@@ -153,13 +159,18 @@ function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "body";
+  const isAssistant = entry.info.role === "assistant";
   for (const part of entry.parts) {
     if (part.type === "text" && !part.ignored) {
-      const p = document.createElement("p");
-      p.className = "part-text";
-      p.textContent = part.text;
-      body.appendChild(p);
-      partEls.set(`${part.messageID}:${part.id}`, p);
+      const el = document.createElement(isAssistant ? "div" : "p");
+      el.className = isAssistant ? "part-text part-markdown" : "part-text";
+      if (isAssistant) {
+        el.innerHTML = renderMarkdown(part.text);
+      } else {
+        el.textContent = part.text;
+      }
+      body.appendChild(el);
+      partEls.set(`${part.messageID}:${part.id}`, el);
     }
   }
 
@@ -213,12 +224,12 @@ function updateStreamedPart(part: TextPart): void {
   const key = `${part.messageID}:${part.id}`;
   let el = partEls.get(key);
   if (!el) {
-    el = document.createElement("p");
-    el.className = "part-text";
+    el = document.createElement("div");
+    el.className = "part-text part-markdown";
     body.appendChild(el);
     partEls.set(key, el);
   }
-  el.textContent = part.text;
+  el.innerHTML = renderMarkdown(part.text);
   scrollToBottom();
 }
 

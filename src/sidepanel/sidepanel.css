@@ -116,6 +116,81 @@ body {
   line-height: 1.45;
 }
 
+.part-markdown {
+  white-space: normal;
+}
+
+.part-markdown > :first-child {
+  margin-top: 0;
+}
+
+.part-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.part-markdown p {
+  margin: 6px 0;
+}
+
+.part-markdown pre {
+  background: #f6f8fa;
+  border: 1px solid #eaeef2;
+  border-radius: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.part-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: #f6f8fa;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.part-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.part-markdown ul,
+.part-markdown ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.part-markdown blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid #d0d7de;
+  color: #57606a;
+}
+
+.part-markdown table {
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.part-markdown th,
+.part-markdown td {
+  border: 1px solid #d0d7de;
+  padding: 4px 8px;
+}
+
+.part-markdown a {
+  color: #1f6feb;
+}
+
+.part-markdown h1,
+.part-markdown h2,
+.part-markdown h3,
+.part-markdown h4 {
+  font-size: 14px;
+  margin: 8px 0 4px;
+}
+
 .send-error {
   color: #cf222e;
   white-space: pre-wrap;
