@@ -3,6 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <title>OpenCode Sessions</title>
+    <link rel="stylesheet" href="sidepanel.css" />
   </head>
-  <body></body>
+  <body>
+    <header class="topbar">
+      <span id="conn-dot" class="conn-dot" data-state="unknown"></span>
+      <span id="conn-text">Connecting…</span>
+      <button id="new-session" class="btn-ghost">New</button>
+    </header>
+
+    <div id="sessions" class="sessions" role="listbox" aria-label="Sessions"></div>
+
+    <main id="thread" class="thread">
+      <div id="thread-empty" class="empty">Select a session to view the conversation.</div>
+      <div id="messages" class="messages" hidden></div>
+    </main>
+
+    <footer class="composer">
+      <textarea id="prompt" rows="2" placeholder="Message opencode…" spellcheck="false"></textarea>
+      <div class="composer-actions">
+        <button id="abort" class="btn-ghost" disabled>Abort</button>
+        <button id="send" disabled>Send</button>
+      </div>
+    </footer>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
 </html>

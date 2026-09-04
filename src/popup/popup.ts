@@ -11,6 +11,7 @@ const serverUrlInput = document.getElementById("server-url") as HTMLInputElement
 const serverPasswordInput = document.getElementById("server-password") as HTMLInputElement;
 const deliveryModeSelect = document.getElementById("delivery-mode") as HTMLSelectElement;
 const testButton = document.getElementById("test-connection") as HTMLButtonElement;
+const openPanelButton = document.getElementById("open-panel") as HTMLButtonElement;
 
 const savedSettings = await getSettings();
 serverUrlInput.value = savedSettings.serverUrl;
@@ -62,6 +63,16 @@ async function runConnectionCheck(serverUrl: string, serverPassword: string): Pr
 
 testButton.addEventListener("click", () => {
   void runConnectionCheck(serverUrlInput.value.trim(), serverPasswordInput.value);
+});
+
+openPanelButton.addEventListener("click", () => {
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.windowId !== undefined) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+      window.close();
+    }
+  })();
 });
 
 form.addEventListener("submit", (event) => {

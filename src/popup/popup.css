@@ -103,3 +103,8 @@ button[type="submit"]:hover {
 .detail[data-state="error"] {
   color: #cf222e;
 }
+
+.open-panel {
+  width: 100%;
+  margin-top: 12px;
+}
