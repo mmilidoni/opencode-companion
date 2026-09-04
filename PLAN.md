@@ -307,26 +307,38 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 
 **Must:** Phases 0–3 (context-menu sends + side panel with streaming chat), Phase 4 store hygiene.
 
-**Nice-to-do (deferred, in order):**
-1. Markdown rendering (`marked` + `dompurify`)
-2. `/session/:id/command` slash-command UI
-3. Agent/model pickers (`GET /agent`, `GET /config/providers`)
-4. GitHub-issue-aware capture (detect `github.com/*/issues/*`, structure the prompt)
-5. Remote servers via `optional_host_permissions`
-6. Firefox port (MV3)
+**Nice-to-do — implemented 2026-09-04, merged into `phase/4-cws`:**
+1. Markdown rendering — `marked` + `dompurify`; assistant parts rendered sanitized, user parts stay plain text
+2. `/session/:id/command` slash-command UI — command dropdown + args row in the side-panel composer
+3. Agent/model pickers — global defaults in options (`GET /app/agents` + `GET /config/providers`); applied per-prompt via `prompt_async`, not at session creation (session create accepts no agent/model)
+4. GitHub-issue-aware capture — `parseGithubIssue()` adds structured issue context (owner/repo/number) to composed prompts
+5. Session deletion — side-panel "Delete" (current) and "Delete all" (all extension-created sessions), both `confirm()`-gated; `DELETE /session/{id}` per session (no bulk endpoint)
+
+**Still deferred:**
+6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost); the manifest key stays removed from the shipped build until then
+7. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
 ## 10. CWS submission checklist
 
+- [x] Privacy policy drafted (`PRIVACY.md`, covers CWS data categories)
 - [ ] One-time $5 developer registration
-- [ ] Privacy policy at public URL (GitHub Pages: `PRIVACY.md`)
-- [ ] Single-purpose statement in listing
-- [ ] Justification for each permission (template in §4)
-- [ ] Data-use disclosure: page content sent to the user's own local opencode server only
-- [ ] Icons 16/48/128 + screenshots 1280×800 + small promo tile 440×280
+- [ ] Privacy policy live at public URL — GitHub Pages: merge `phase/4-cws` →
+      `main`, push, then Settings → Pages → Deploy from a branch → `main` / `(root)`;
+      verify `https://mmilidoni.github.io/opencode-companion/PRIVACY.html` (root
+      `index.html` is the landing page; don't rename the repo — the URL is tied to it)
+- [x] Single-purpose statement, short/detailed description, permission
+      justification, data-use disclosure — `STORE.md`
+- [x] Screenshots 1280×800 — `images/store/` (context menu, options page, popup,
+      sidebar; originals in `images/` are the working captures)
+- [x] Small promo tile 440×280 + marquee 1400×560 — `images/store/` (branded
+      graphics from the icon; optional, recommended)
 - [ ] `npm run zip` artifact; version matches `manifest.json` and `package.json`
-- [ ] Naming: "Companion for OpenCode", description notes "unofficial", links repo
+- [x] Naming: "Companion for OpenCode", description notes "unofficial", links repo
+- [ ] Developer email set in the CWS developer account
+- [ ] `optional_host_permissions` removed from manifest for the first review
+      (re-add only when remote servers ship — §9 item 6)
 
 ---
 

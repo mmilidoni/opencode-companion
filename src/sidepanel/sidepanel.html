@@ -9,6 +9,8 @@
     <header class="topbar">
       <span id="conn-dot" class="conn-dot" data-state="unknown"></span>
       <span id="conn-text">Connecting…</span>
+      <button id="delete-session" class="btn-ghost danger" disabled>Delete</button>
+      <button id="delete-all" class="btn-ghost danger" disabled>Delete all</button>
       <button id="new-session" class="btn-ghost">New</button>
     </header>
 
@@ -21,6 +23,13 @@
 
     <footer class="composer">
       <textarea id="prompt" rows="2" placeholder="Message opencode…" spellcheck="false"></textarea>
+      <div class="composer-row">
+        <select id="command-select" class="command-select" aria-label="Slash command">
+          <option value="">Commands…</option>
+        </select>
+        <input id="command-args" class="command-args" type="text" placeholder="Arguments" spellcheck="false" />
+        <button id="run-command" class="btn-ghost" disabled>Run</button>
+      </div>
       <div class="composer-actions">
         <button id="abort" class="btn-ghost" disabled>Abort</button>
         <button id="send" disabled>Send</button>

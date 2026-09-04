@@ -7,6 +7,12 @@ export interface Settings {
   autoSubmitTui: boolean;
   pageCharLimit: number;
   autoOpenPanel: boolean;
+  /** "" = server default agent. */
+  agent: string;
+  /** "" = server default provider. */
+  modelProviderId: string;
+  /** "" = server default model. */
+  modelId: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -16,6 +22,9 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSubmitTui: false,
   pageCharLimit: 20_000,
   autoOpenPanel: true,
+  agent: "",
+  modelProviderId: "",
+  modelId: "",
 };
 
 const SETTINGS_KEY = "settings";
@@ -47,6 +56,15 @@ export async function addExtensionSessionId(id: string): Promise<void> {
   ids.push(id);
   const capped = ids.length > MAX_RECORDED_SESSION_IDS ? ids.slice(-MAX_RECORDED_SESSION_IDS) : ids;
   await chrome.storage.local.set({ [EXTENSION_SESSION_IDS_KEY]: capped });
+}
+
+export async function removeExtensionSessionIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const toRemove = new Set(ids);
+  const remaining = (await getExtensionSessionIds()).filter((id) => !toRemove.has(id));
+  await chrome.storage.local.set({ [EXTENSION_SESSION_IDS_KEY]: remaining });
 }
 
 const PENDING_SESSION_ID_KEY = "pendingSessionId";

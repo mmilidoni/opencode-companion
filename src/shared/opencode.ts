@@ -1,5 +1,5 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/client";
-import type { Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/client";
+import type { Agent, Command, Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/client";
 
 export type OpenCodeError =
   | { kind: "unreachable"; detail: string }
@@ -25,10 +25,19 @@ export type MessageThreadEntry = { info: Message; parts: Part[] };
 export interface OpenCodeApi {
   health(): Promise<Result<HealthInfo>>;
   createSession(title: string): Promise<Result<string>>;
-  promptAsync(sessionId: string, parts: TextPartInput[]): Promise<Result<void>>;
+  promptAsync(
+    sessionId: string,
+    parts: TextPartInput[],
+    opts?: { agent?: string; model?: { providerID: string; modelID: string } },
+  ): Promise<Result<void>>;
   listSessions(): Promise<Result<Session[]>>;
   listMessages(sessionId: string): Promise<Result<MessageThreadEntry[]>>;
   abort(sessionId: string): Promise<Result<void>>;
+  deleteSession(sessionId: string): Promise<Result<void>>;
+  listCommands(): Promise<Result<Command[]>>;
+  runCommand(sessionId: string, command: string, args: string): Promise<Result<void>>;
+  listAgents(): Promise<Result<Agent[]>>;
+  listProviders(): Promise<Result<{ providers: { id: string; name: string; models: Record<string, unknown> }[] }>>;
   appendPromptTui(text: string): Promise<Result<void>>;
   submitPromptTui(): Promise<Result<void>>;
   /** `/event` SSE bus; auto-reconnects with exponential backoff. */
@@ -160,9 +169,16 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
         return session.data.id;
       });
     },
-    async promptAsync(sessionId, parts) {
+    async promptAsync(sessionId, parts, opts) {
       return run(async () => {
-        await client.session.promptAsync({ path: { id: sessionId }, body: { parts }, throwOnError: true });
+        const body: { parts: TextPartInput[]; agent?: string; model?: { providerID: string; modelID: string } } = { parts };
+        if (opts?.agent) {
+          body.agent = opts.agent;
+        }
+        if (opts?.model?.providerID && opts?.model?.modelID) {
+          body.model = { providerID: opts.model.providerID, modelID: opts.model.modelID };
+        }
+        await client.session.promptAsync({ path: { id: sessionId }, body, throwOnError: true });
       });
     },
     async listSessions() {
@@ -180,6 +196,38 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     async abort(sessionId) {
       return run(async () => {
         await client.session.abort({ path: { id: sessionId }, throwOnError: true });
+      });
+    },
+    async deleteSession(sessionId) {
+      return run(async () => {
+        await client.session.delete({ path: { id: sessionId }, throwOnError: true });
+      });
+    },
+async listCommands() {
+      return run(async () => {
+        const commands = await client.command.list({ throwOnError: true });
+        return commands.data;
+      });
+    },
+    async runCommand(sessionId, command, args) {
+      return run(async () => {
+        await client.session.command({
+          path: { id: sessionId },
+          body: { command, arguments: args },
+          throwOnError: true,
+        });
+      });
+    },
+    async listAgents() {
+      return run(async () => {
+        const agents = await client.app.agents({ throwOnError: true });
+        return agents.data;
+      });
+    },
+    async listProviders() {
+      return run(async () => {
+        const providers = await client.config.providers({ throwOnError: true });
+        return providers.data;
       });
     },
     async appendPromptTui(text) {

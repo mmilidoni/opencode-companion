@@ -1,8 +1,11 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings, addExtensionSessionId, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
+import { getSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
+import type { Command } from "@opencode-ai/sdk/client";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 const HEALTH_POLL_MS = 5_000;
 const PENDING_POLL_MS = 1_500;
@@ -22,14 +25,22 @@ const promptEl = document.getElementById("prompt") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send") as HTMLButtonElement;
 const abortBtn = document.getElementById("abort") as HTMLButtonElement;
 const newSessionBtn = document.getElementById("new-session") as HTMLButtonElement;
+const deleteSessionBtn = document.getElementById("delete-session") as HTMLButtonElement;
+const deleteAllBtn = document.getElementById("delete-all") as HTMLButtonElement;
+const commandSelect = document.getElementById("command-select") as HTMLSelectElement;
+const commandArgs = document.getElementById("command-args") as HTMLInputElement;
+const runCommandBtn = document.getElementById("run-command") as HTMLButtonElement;
 
 let settings: Settings = await getSettings();
 let api: OpenCodeApi = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
 let connected = false;
 let selectedSessionId: string | null = null;
 let thread: MessageThreadEntry[] = [];
+let commands: Command[] = [];
+let commandsFetchedFromUrl = "";
+let visibleSessionCount = 0;
 const messageEls = new Map<string, HTMLDivElement>();
-const partEls = new Map<string, HTMLParagraphElement>();
+const partEls = new Map<string, HTMLElement>();
 
 function describeError(error: OpenCodeError): string {
   switch (error.kind) {
@@ -58,14 +69,67 @@ function setConnected(ok: boolean): void {
 function updateControls(): void {
   sendBtn.disabled = !connected || selectedSessionId === null;
   abortBtn.disabled = selectedSessionId === null;
+  deleteSessionBtn.disabled = !connected || selectedSessionId === null;
+  deleteAllBtn.disabled = !connected || visibleSessionCount === 0;
+  commandSelect.disabled = !connected || selectedSessionId === null || commands.length === 0;
+  runCommandBtn.disabled = !connected || selectedSessionId === null || commandSelect.value === "";
+}
+
+async function refreshCommands(): Promise<void> {
+  const result = await api.listCommands();
+  if (!result.ok) {
+    commandSelect.textContent = "";
+    return;
+  }
+  commands = result.value;
+  const selected = commandSelect.value;
+  commandSelect.textContent = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = commands.length === 0 ? "No commands available" : "Commands…";
+  placeholder.disabled = true;
+  commandSelect.appendChild(placeholder);
+  for (const cmd of commands) {
+    const option = document.createElement("option");
+    option.value = cmd.name;
+    option.textContent = `/${cmd.name}${cmd.description ? ` — ${cmd.description}` : ""}`;
+    option.title = cmd.template;
+    commandSelect.appendChild(option);
+  }
+  commandSelect.value = selected;
+  updateControls();
+}
+
+async function runSelectedCommand(): Promise<void> {
+  if (selectedSessionId === null || !connected) {
+    return;
+  }
+  const command = commandSelect.value;
+  if (!command) {
+    return;
+  }
+  const args = commandArgs.value.trim();
+  const result = await api.runCommand(selectedSessionId, command, args);
+  if (!result.ok) {
+    const err = document.createElement("div");
+    err.className = "send-error";
+    err.textContent = describeError(result.error);
+    messagesEl.appendChild(err);
+    scrollToBottom();
+    return;
+  }
+  commandArgs.value = "";
+  await reloadThread();
 }
 
 async function pollHealth(): Promise<void> {
   const result = await api.health();
   const wasConnected = connected;
   setConnected(result.ok);
-  if (result.ok && !wasConnected) {
+  if (result.ok && (!wasConnected || commandsFetchedFromUrl !== settings.serverUrl)) {
     await refreshSessions();
+    await refreshCommands();
+    commandsFetchedFromUrl = settings.serverUrl;
   }
 }
 
@@ -80,6 +144,7 @@ async function refreshSessions(): Promise<void> {
   const sorted = [...result.value]
     .filter((session) => extensionIds.has(session.id))
     .sort((a, b) => b.time.updated - a.time.updated);
+  visibleSessionCount = sorted.length;
   if (sorted.length === 0) {
     const placeholder = document.createElement("option");
     placeholder.value = "";
@@ -87,6 +152,7 @@ async function refreshSessions(): Promise<void> {
     placeholder.disabled = true;
     sessionSelect.appendChild(placeholder);
     sessionSelect.value = "";
+    updateControls();
     return;
   }
   for (const session of sorted) {
@@ -98,6 +164,7 @@ async function refreshSessions(): Promise<void> {
     sessionSelect.appendChild(option);
   }
   sessionSelect.value = selectedSessionId ?? "";
+  updateControls();
 }
 
 async function selectSession(id: string): Promise<void> {
@@ -126,6 +193,70 @@ async function createNewSession(): Promise<void> {
   await selectSession(result.value);
 }
 
+function clearSelectedSession(): void {
+  selectedSessionId = null;
+  thread = [];
+  messageEls.clear();
+  partEls.clear();
+  renderThread();
+  updateControls();
+}
+
+function appendError(message: string): void {
+  const err = document.createElement("div");
+  err.className = "send-error";
+  err.textContent = message;
+  messagesEl.appendChild(err);
+  scrollToBottom();
+}
+
+async function deleteCurrentSession(): Promise<void> {
+  if (selectedSessionId === null || !connected) {
+    return;
+  }
+  const id = selectedSessionId;
+  const title = sessionSelect.selectedOptions[0]?.textContent ?? "this session";
+  if (!confirm(`Delete session "${title}"? This cannot be undone.`)) {
+    return;
+  }
+  const result = await api.deleteSession(id);
+  if (!result.ok) {
+    appendError(describeError(result.error));
+    return;
+  }
+  await removeExtensionSessionIds([id]);
+  const pending = await getPendingSessionId();
+  if (pending === id) {
+    await clearPendingSessionId();
+  }
+  clearSelectedSession();
+  await refreshSessions();
+}
+
+async function deleteAllSessions(): Promise<void> {
+  if (!connected) {
+    return;
+  }
+  const ids = await getExtensionSessionIds();
+  if (ids.length === 0) {
+    return;
+  }
+  if (!confirm(`Delete all ${ids.length} sessions created by this extension? This cannot be undone.`)) {
+    return;
+  }
+  const results = await Promise.allSettled(ids.map((id) => api.deleteSession(id)));
+  const failed = results.filter(
+    (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
+  ).length;
+  await removeExtensionSessionIds(ids);
+  await clearPendingSessionId();
+  clearSelectedSession();
+  await refreshSessions();
+  if (failed > 0) {
+    appendError(`Deleted ${ids.length - failed} of ${ids.length} sessions.`);
+  }
+}
+
 function renderThread(): void {
   messagesEl.textContent = "";
   messageEls.clear();
@@ -143,6 +274,10 @@ function renderThread(): void {
   scrollToBottom();
 }
 
+function renderMarkdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text, { async: false }));
+}
+
 function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
   const bubble = document.createElement("div");
   bubble.className = `bubble ${entry.info.role}`;
@@ -153,13 +288,18 @@ function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "body";
+  const isAssistant = entry.info.role === "assistant";
   for (const part of entry.parts) {
     if (part.type === "text" && !part.ignored) {
-      const p = document.createElement("p");
-      p.className = "part-text";
-      p.textContent = part.text;
-      body.appendChild(p);
-      partEls.set(`${part.messageID}:${part.id}`, p);
+      const el = document.createElement(isAssistant ? "div" : "p");
+      el.className = isAssistant ? "part-text part-markdown" : "part-text";
+      if (isAssistant) {
+        el.innerHTML = renderMarkdown(part.text);
+      } else {
+        el.textContent = part.text;
+      }
+      body.appendChild(el);
+      partEls.set(`${part.messageID}:${part.id}`, el);
     }
   }
 
@@ -213,12 +353,12 @@ function updateStreamedPart(part: TextPart): void {
   const key = `${part.messageID}:${part.id}`;
   let el = partEls.get(key);
   if (!el) {
-    el = document.createElement("p");
-    el.className = "part-text";
+    el = document.createElement("div");
+    el.className = "part-text part-markdown";
     body.appendChild(el);
     partEls.set(key, el);
   }
-  el.textContent = part.text;
+  el.innerHTML = renderMarkdown(part.text);
   scrollToBottom();
 }
 
@@ -228,7 +368,14 @@ async function sendPrompt(): Promise<void> {
     return;
   }
   promptEl.value = "";
-  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text }]);
+  const model =
+    settings.modelProviderId && settings.modelId
+      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
+      : undefined;
+  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text }], {
+    agent: settings.agent || undefined,
+    model,
+  });
   if (!result.ok) {
     const err = document.createElement("div");
     err.className = "send-error";
@@ -277,6 +424,22 @@ abortBtn.addEventListener("click", () => {
 });
 newSessionBtn.addEventListener("click", () => {
   void createNewSession();
+});
+
+deleteSessionBtn.addEventListener("click", () => {
+  void deleteCurrentSession();
+});
+
+deleteAllBtn.addEventListener("click", () => {
+  void deleteAllSessions();
+});
+
+commandSelect.addEventListener("change", () => {
+  updateControls();
+});
+
+runCommandBtn.addEventListener("click", () => {
+  void runSelectedCommand();
 });
 
 sessionSelect.addEventListener("change", () => {
