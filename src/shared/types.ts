@@ -11,5 +11,11 @@ export interface CheckConnectionResultMessage {
   result: ConnectionResult;
 }
 
+export interface SelectSessionMessage {
+  type: "select-session";
+  sessionId: string;
+}
+
 export type BackgroundMessage = CheckConnectionMessage;
 export type PopupMessage = CheckConnectionResultMessage;
+export type PanelMessage = SelectSessionMessage;

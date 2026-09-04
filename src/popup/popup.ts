@@ -10,6 +10,7 @@ const form = document.getElementById("settings-form") as HTMLFormElement;
 const serverUrlInput = document.getElementById("server-url") as HTMLInputElement;
 const serverPasswordInput = document.getElementById("server-password") as HTMLInputElement;
 const deliveryModeSelect = document.getElementById("delivery-mode") as HTMLSelectElement;
+const autoOpenPanelCheckbox = document.getElementById("auto-open-panel") as HTMLInputElement;
 const testButton = document.getElementById("test-connection") as HTMLButtonElement;
 const openPanelButton = document.getElementById("open-panel") as HTMLButtonElement;
 
@@ -17,6 +18,7 @@ const savedSettings = await getSettings();
 serverUrlInput.value = savedSettings.serverUrl;
 serverPasswordInput.value = savedSettings.serverPassword;
 deliveryModeSelect.value = savedSettings.deliveryMode;
+autoOpenPanelCheckbox.checked = savedSettings.autoOpenPanel;
 
 function renderResult(result: ConnectionResult): void {
   statusDot.dataset.state = result.ok ? "ok" : "error";
@@ -83,8 +85,9 @@ form.addEventListener("submit", (event) => {
   }
   const serverPassword = serverPasswordInput.value;
   const deliveryMode = deliveryModeSelect.value as DeliveryMode;
+  const autoOpenPanel = autoOpenPanelCheckbox.checked;
   void (async () => {
-    await saveSettings({ ...savedSettings, serverUrl, serverPassword, deliveryMode });
+    await saveSettings({ ...savedSettings, serverUrl, serverPassword, deliveryMode, autoOpenPanel });
     await runConnectionCheck(serverUrl, serverPassword);
   })();
 });

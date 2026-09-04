@@ -2,7 +2,7 @@ import { createOpenCodeApi } from "../shared/opencode.js";
 import type { OpenCodeError } from "../shared/opencode.js";
 import { composePrompt } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
-import { getSettings, addExtensionSessionId } from "../shared/storage.js";
+import { getSettings, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
 import type { TextPartInput } from "@opencode-ai/sdk/client";
 
@@ -99,8 +99,26 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
     notify("send-error", "Send to OpenCode failed", describeSendError(sent.error));
     return;
   }
+  if (settings.autoOpenPanel) {
+    await setPendingSessionId(session.value);
+    await openPanel();
+    // The panel may already be open — tell it to select the new session now.
+    void chrome.runtime.sendMessage({ type: "select-session", sessionId: session.value }).catch(() => {});
+  }
   notify("send-ok", "Sent to OpenCode", "Prompt sent to a new session.");
   flashBadge();
+}
+
+async function openPanel(): Promise<void> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.windowId !== undefined) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+    }
+  } catch {
+    // Not a user-gesture context (e.g., some command paths) — panel stays
+    // closed; the user can still open it from the popup.
+  }
 }
 
 interface CapturedPage {

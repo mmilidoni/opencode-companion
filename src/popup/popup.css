@@ -60,6 +60,18 @@ select {
   background: #ffffff;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+.check-row input {
+  margin: 0;
+}
+
 .actions {
   display: flex;
   gap: 8px;

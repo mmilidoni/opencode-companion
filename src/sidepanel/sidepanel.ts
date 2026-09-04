@@ -1,6 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings, addExtensionSessionId, getExtensionSessionIds } from "../shared/storage.js";
+import { getSettings, addExtensionSessionId, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
 
@@ -293,9 +293,24 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-void pollHealth();
-void refreshSessions();
-void subscribeToEvents();
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  const msg = message as { type?: string; sessionId?: string };
+  if (msg.type === "select-session" && msg.sessionId) {
+    void clearPendingSessionId();
+    void selectSession(msg.sessionId);
+  }
+});
+
+void (async () => {
+  await pollHealth();
+  await refreshSessions();
+  const pending = await getPendingSessionId();
+  if (pending) {
+    await clearPendingSessionId();
+    await selectSession(pending);
+  }
+  void subscribeToEvents();
+})();
 setInterval(() => {
   void pollHealth();
 }, HEALTH_POLL_MS);
