@@ -82,6 +82,13 @@ body {
   background: #eaeef2;
 }
 
+.sessions-empty {
+  color: #6e7781;
+  font-size: 12px;
+  padding: 4px 2px;
+  line-height: 1.4;
+}
+
 .session-chip.active {
   background: #1f6feb;
   border-color: #1f6feb;

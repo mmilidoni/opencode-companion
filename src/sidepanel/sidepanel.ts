@@ -1,6 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings } from "../shared/storage.js";
+import { getSettings, addExtensionSessionId, getExtensionSessionIds } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { Session, TextPart } from "@opencode-ai/sdk/client";
 
@@ -75,7 +75,17 @@ async function refreshSessions(): Promise<void> {
     return;
   }
   sessionsEl.textContent = "";
-  const sorted = [...result.value].sort((a, b) => b.time.updated - a.time.updated);
+  const extensionIds = new Set(await getExtensionSessionIds());
+  const sorted = [...result.value]
+    .filter((session) => extensionIds.has(session.id))
+    .sort((a, b) => b.time.updated - a.time.updated);
+  if (sorted.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "sessions-empty";
+    empty.textContent = "No sessions from this browser yet. Right-click a page and pick \"Send selection to OpenCode\".";
+    sessionsEl.appendChild(empty);
+    return;
+  }
   for (const session of sorted) {
     sessionsEl.appendChild(renderSessionChip(session));
   }
@@ -113,6 +123,7 @@ async function createNewSession(): Promise<void> {
     setConnected(false);
     return;
   }
+  await addExtensionSessionId(result.value);
   await refreshSessions();
   await selectSession(result.value);
 }
