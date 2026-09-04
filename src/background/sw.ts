@@ -59,12 +59,17 @@ function scheduleHealthCheck(): void {
 }
 
 function notify(id: string, title: string, message: string): void {
-  void chrome.notifications.create(id, {
-    type: "basic",
-    iconUrl: "icons/icon128.png",
-    title,
-    message,
-  });
+  // Relative iconUrl resolves against the SW script location (dist/), not the
+  // extension root — resolve explicitly or the notification promise rejects
+  // with "Unable to download all specified images".
+  void chrome.notifications
+    .create(id, {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+      title,
+      message,
+    })
+    .catch(() => {});
 }
 
 function describeSendError(error: OpenCodeError): string {
