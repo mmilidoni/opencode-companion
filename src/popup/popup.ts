@@ -43,6 +43,8 @@ function describeError(error: OpenCodeError): string {
       return `Could not reach the server. Is \`opencode serve\` running on ${serverUrlInput.value}?`;
     case "server":
       return `Server error (${error.status}).`;
+    case "tui":
+      return error.detail;
   }
 }
 
