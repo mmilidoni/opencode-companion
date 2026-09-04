@@ -18,7 +18,13 @@ function renderResult(result: ConnectionResult): void {
   statusDot.dataset.state = result.ok ? "ok" : "error";
   if (result.ok) {
     statusText.textContent = `Connected — opencode ${result.value.version}`;
-    statusDetail.hidden = true;
+    if (!result.value.requiresAuth && result.value.passwordProvided) {
+      statusDetail.hidden = false;
+      statusDetail.dataset.state = "ok";
+      statusDetail.textContent = "This server doesn't require a password — you can remove it from settings.";
+    } else {
+      statusDetail.hidden = true;
+    }
     return;
   }
   statusText.textContent = "Disconnected";
@@ -30,7 +36,9 @@ function renderResult(result: ConnectionResult): void {
 function describeError(error: OpenCodeError): string {
   switch (error.kind) {
     case "unauthorized":
-      return "Authentication failed — check the server password.";
+      return error.passwordProvided
+        ? "Authentication failed — check the server password."
+        : "The server requires a password — enter it in settings.";
     case "unreachable":
       return `Could not reach the server. Is \`opencode serve\` running on ${serverUrlInput.value}?`;
     case "server":
