@@ -330,8 +330,9 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
       `index.html` is the landing page; don't rename the repo — the URL is tied to it)
 - [x] Single-purpose statement, short/detailed description, permission
       justification, data-use disclosure — `STORE.md`
-- [ ] Screenshots 1280×800 (side panel streaming, context menu, popup config,
-      options page) + small promo tile 440×280 + marquee 1400×560 (optional)
+- [x] Screenshots 1280×800 — `images/store/` (context menu, options page, popup,
+      sidebar; originals in `images/` are the working captures)
+- [ ] Small promo tile 440×280 + marquee 1400×560 (optional)
 - [ ] `npm run zip` artifact; version matches `manifest.json` and `package.json`
 - [x] Naming: "Companion for OpenCode", description notes "unofficial", links repo
 - [ ] Developer email set in the CWS developer account
