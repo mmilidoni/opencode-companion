@@ -7,6 +7,12 @@ export interface Settings {
   autoSubmitTui: boolean;
   pageCharLimit: number;
   autoOpenPanel: boolean;
+  /** "" = server default agent. */
+  agent: string;
+  /** "" = server default provider. */
+  modelProviderId: string;
+  /** "" = server default model. */
+  modelId: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -16,6 +22,9 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSubmitTui: false,
   pageCharLimit: 20_000,
   autoOpenPanel: true,
+  agent: "",
+  modelProviderId: "",
+  modelId: "",
 };
 
 const SETTINGS_KEY = "settings";
