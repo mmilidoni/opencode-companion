@@ -312,10 +312,11 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 2. `/session/:id/command` slash-command UI — command dropdown + args row in the side-panel composer
 3. Agent/model pickers — global defaults in options (`GET /app/agents` + `GET /config/providers`); applied per-prompt via `prompt_async`, not at session creation (session create accepts no agent/model)
 4. GitHub-issue-aware capture — `parseGithubIssue()` adds structured issue context (owner/repo/number) to composed prompts
+5. Session deletion — side-panel "Delete" (current) and "Delete all" (all extension-created sessions), both `confirm()`-gated; `DELETE /session/{id}` per session (no bulk endpoint)
 
 **Still deferred:**
-5. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost)
-6. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
+6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost)
+7. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
