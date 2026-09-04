@@ -1,0 +1,17 @@
+{
+  "name": "opencode-companion",
+  "version": "0.1.0",
+  "description": "Send selected text and page content from any website into your local opencode agent. Unofficial, open-source.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@opencode-ai/sdk": "1.18.27",
+    "@types/chrome": "^0.2.8",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
