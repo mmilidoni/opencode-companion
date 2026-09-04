@@ -91,3 +91,7 @@ button:hover {
   color: #1a7f37;
   font-weight: 600;
 }
+
+#options-status[data-state="error"] {
+  color: #cf222e;
+}
