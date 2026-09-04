@@ -6,6 +6,7 @@ the selected text or the whole page into an opencode session; the side panel
 lets you browse sessions and watch responses stream in.
 
 Unofficial and open-source — not affiliated with the opencode project.
+Source: [github.com/mmilidoni/opencode-companion](https://github.com/mmilidoni/opencode-companion).
 
 ## Features
 
@@ -13,14 +14,21 @@ Unofficial and open-source — not affiliated with the opencode project.
   `Ctrl+Shift+U` on a page with selected text.
 - **Send page** — right-click on any page → *Send page to OpenCode* (page text
   captured as `innerText`, truncated at the configured limit).
+- **GitHub-issue aware** — sending from a GitHub issue page adds structured
+  issue context (owner/repo/number) to the prompt.
 - **Two delivery modes**:
   - *New opencode session* (default): creates a session on the server and
     sends the prompt asynchronously.
   - *Open TUI prompt*: appends the prompt into an opencode TUI running on the
     server port (append-only by default; auto-submit is opt-in).
 - **Side panel** — session list, streaming chat over the server's `/event`
-  SSE bus, abort, and new-session creation. Auto-opens and selects the new
+  SSE bus, abort, new-session creation, slash commands, and session deletion
+  (current or all extension-created sessions). Auto-opens and selects the new
   session when you send from a page (toggleable).
+- **Markdown replies** — assistant messages render as sanitized markdown
+  (code blocks, lists, tables); your own messages stay plain text.
+- **Agent & model defaults** — set a default agent and model in options,
+  applied to every prompt the extension sends.
 - Captured content is wrapped in explicit `UNTRUSTED CONTENT` delimiters with a
   guard note, because page content is data, never instructions.
 
@@ -64,8 +72,8 @@ Then in Chrome:
 Open the popup: set the server URL (and password, if the server requires one),
 pick the delivery mode, and hit **Save**. The status dot shows whether the
 server is reachable and whether it requires a password. Advanced options
-(page character limit, TUI auto-submit) live in the options page
-(right-click the extension → Options).
+(page character limit, TUI auto-submit, agent & model defaults) live in the
+options page (right-click the extension → Options).
 
 ## Usage
 
