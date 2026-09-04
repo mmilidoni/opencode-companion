@@ -307,13 +307,15 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 
 **Must:** Phases 0–3 (context-menu sends + side panel with streaming chat), Phase 4 store hygiene.
 
-**Nice-to-do (deferred, in order):**
-1. Markdown rendering (`marked` + `dompurify`)
-2. `/session/:id/command` slash-command UI
-3. Agent/model pickers (`GET /agent`, `GET /config/providers`)
-4. GitHub-issue-aware capture (detect `github.com/*/issues/*`, structure the prompt)
-5. Remote servers via `optional_host_permissions`
-6. Firefox port (MV3)
+**Nice-to-do — implemented 2026-09-04, merged into `phase/4-cws`:**
+1. Markdown rendering — `marked` + `dompurify`; assistant parts rendered sanitized, user parts stay plain text
+2. `/session/:id/command` slash-command UI — command dropdown + args row in the side-panel composer
+3. Agent/model pickers — global defaults in options (`GET /app/agents` + `GET /config/providers`); applied per-prompt via `prompt_async`, not at session creation (session create accepts no agent/model)
+4. GitHub-issue-aware capture — `parseGithubIssue()` adds structured issue context (owner/repo/number) to composed prompts
+
+**Still deferred:**
+5. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost)
+6. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
