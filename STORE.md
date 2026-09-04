@@ -85,5 +85,5 @@ for the full details.
 - Homepage / source: <https://github.com/mmilidoni/opencode-companion>
 - Privacy policy: <https://mmilidoni.github.io/opencode-companion/PRIVACY.html>
 - Support: <https://github.com/mmilidoni/opencode-companion/issues>
-- Developer email: `TODO — required at submission time` (set in the CWS
+- Developer email: `michelemilidoni@gmail.com` (set in the CWS
   developer account, not in the listing)
