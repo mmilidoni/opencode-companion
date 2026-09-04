@@ -3,6 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <title>Companion for OpenCode</title>
+    <link rel="stylesheet" href="popup.css" />
   </head>
-  <body></body>
+  <body>
+    <header class="status-row">
+      <span id="status-dot" class="dot" data-state="unknown"></span>
+      <span id="status-text">Checking…</span>
+    </header>
+
+    <form id="settings-form">
+      <label for="server-url">Server URL</label>
+      <input id="server-url" type="url" spellcheck="false" placeholder="http://localhost:4096" required />
+
+      <label for="server-password">Password</label>
+      <input id="server-password" type="password" autocomplete="off" spellcheck="false" />
+
+      <div class="actions">
+        <button type="button" id="test-connection">Test connection</button>
+        <button type="submit">Save</button>
+      </div>
+
+      <p id="status-detail" class="detail" hidden></p>
+    </form>
+
+    <script type="module" src="popup.js"></script>
+  </body>
 </html>
