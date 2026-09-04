@@ -1,5 +1,5 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/client";
-import type { Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/client";
+import type { Command, Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/client";
 
 export type OpenCodeError =
   | { kind: "unreachable"; detail: string }
@@ -29,6 +29,8 @@ export interface OpenCodeApi {
   listSessions(): Promise<Result<Session[]>>;
   listMessages(sessionId: string): Promise<Result<MessageThreadEntry[]>>;
   abort(sessionId: string): Promise<Result<void>>;
+  listCommands(): Promise<Result<Command[]>>;
+  runCommand(sessionId: string, command: string, args: string): Promise<Result<void>>;
   appendPromptTui(text: string): Promise<Result<void>>;
   submitPromptTui(): Promise<Result<void>>;
   /** `/event` SSE bus; auto-reconnects with exponential backoff. */
@@ -180,6 +182,21 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     async abort(sessionId) {
       return run(async () => {
         await client.session.abort({ path: { id: sessionId }, throwOnError: true });
+      });
+    },
+    async listCommands() {
+      return run(async () => {
+        const commands = await client.command.list({ throwOnError: true });
+        return commands.data;
+      });
+    },
+    async runCommand(sessionId, command, args) {
+      return run(async () => {
+        await client.session.command({
+          path: { id: sessionId },
+          body: { command, arguments: args },
+          throwOnError: true,
+        });
       });
     },
     async appendPromptTui(text) {
