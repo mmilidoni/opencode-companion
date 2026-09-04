@@ -331,13 +331,13 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 - [x] Single-purpose statement, short/detailed description, permission
       justification, data-use disclosure — `STORE.md`
 - [x] Screenshots 1280×800 — `images/store/` (context menu, options page, popup,
-      sidebar; originals in `images/` are the working captures)
+      sidebar)
 - [x] Small promo tile 440×280 + marquee 1400×560 — `images/store/` (branded
       graphics from the icon; optional, recommended)
-- [ ] `npm run zip` artifact; version matches `manifest.json` and `package.json`
+- [x] `npm run zip` artifact; version matches `manifest.json` and `package.json`
 - [x] Naming: "Companion for OpenCode", description notes "unofficial", links repo
 - [ ] Developer email set in the CWS developer account
-- [ ] `optional_host_permissions` removed from manifest for the first review
+- [x] `optional_host_permissions` removed from manifest for the first review
       (re-add only when remote servers ship — §9 item 6)
 
 ---
