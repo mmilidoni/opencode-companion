@@ -43,6 +43,31 @@
           <p class="hint">Maximum characters captured when sending a whole page.</p>
         </section>
 
+        <section>
+          <h2>Agent &amp; model</h2>
+          <p class="hint">Defaults applied to every prompt the extension sends. Leave at "Server default" to use the server's own agent/model. These do not affect the side panel's "New" button, which creates an empty session.</p>
+
+          <div class="actions">
+            <button type="button" id="load-options">Load from server</button>
+            <span id="options-status" class="hint"></span>
+          </div>
+
+          <label for="agent-select">Agent</label>
+          <select id="agent-select">
+            <option value="">Server default</option>
+          </select>
+
+          <label for="provider-select">Provider</label>
+          <select id="provider-select">
+            <option value="">Server default</option>
+          </select>
+
+          <label for="model-select">Model</label>
+          <select id="model-select">
+            <option value="">Server default</option>
+          </select>
+        </section>
+
         <div class="actions">
           <button type="submit">Save</button>
           <span id="saved" class="saved" hidden>Saved</span>

@@ -228,7 +228,14 @@ async function sendPrompt(): Promise<void> {
     return;
   }
   promptEl.value = "";
-  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text }]);
+  const model =
+    settings.modelProviderId && settings.modelId
+      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
+      : undefined;
+  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text }], {
+    agent: settings.agent || undefined,
+    model,
+  });
   if (!result.ok) {
     const err = document.createElement("div");
     err.className = "send-error";

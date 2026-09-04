@@ -110,7 +110,11 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
     return;
   }
   await addExtensionSessionId(session.value);
-  const sent = await api.promptAsync(session.value, parts);
+  const model =
+    settings.modelProviderId && settings.modelId
+      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
+      : undefined;
+  const sent = await api.promptAsync(session.value, parts, { agent: settings.agent || undefined, model });
   if (!sent.ok) {
     notify("send-error", "Send to OpenCode failed", describeSendError(sent.error));
     return;
