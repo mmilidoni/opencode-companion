@@ -33,6 +33,7 @@ export interface OpenCodeApi {
   listSessions(): Promise<Result<Session[]>>;
   listMessages(sessionId: string): Promise<Result<MessageThreadEntry[]>>;
   abort(sessionId: string): Promise<Result<void>>;
+  deleteSession(sessionId: string): Promise<Result<void>>;
   listCommands(): Promise<Result<Command[]>>;
   runCommand(sessionId: string, command: string, args: string): Promise<Result<void>>;
   listAgents(): Promise<Result<Agent[]>>;
@@ -195,6 +196,11 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     async abort(sessionId) {
       return run(async () => {
         await client.session.abort({ path: { id: sessionId }, throwOnError: true });
+      });
+    },
+    async deleteSession(sessionId) {
+      return run(async () => {
+        await client.session.delete({ path: { id: sessionId }, throwOnError: true });
       });
     },
 async listCommands() {

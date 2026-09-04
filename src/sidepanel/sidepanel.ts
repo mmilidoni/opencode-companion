@@ -1,6 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings, addExtensionSessionId, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
+import { getSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
 import type { Command } from "@opencode-ai/sdk/client";
@@ -25,6 +25,8 @@ const promptEl = document.getElementById("prompt") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send") as HTMLButtonElement;
 const abortBtn = document.getElementById("abort") as HTMLButtonElement;
 const newSessionBtn = document.getElementById("new-session") as HTMLButtonElement;
+const deleteSessionBtn = document.getElementById("delete-session") as HTMLButtonElement;
+const deleteAllBtn = document.getElementById("delete-all") as HTMLButtonElement;
 const commandSelect = document.getElementById("command-select") as HTMLSelectElement;
 const commandArgs = document.getElementById("command-args") as HTMLInputElement;
 const runCommandBtn = document.getElementById("run-command") as HTMLButtonElement;
@@ -36,6 +38,7 @@ let selectedSessionId: string | null = null;
 let thread: MessageThreadEntry[] = [];
 let commands: Command[] = [];
 let commandsFetchedFromUrl = "";
+let visibleSessionCount = 0;
 const messageEls = new Map<string, HTMLDivElement>();
 const partEls = new Map<string, HTMLElement>();
 
@@ -66,6 +69,8 @@ function setConnected(ok: boolean): void {
 function updateControls(): void {
   sendBtn.disabled = !connected || selectedSessionId === null;
   abortBtn.disabled = selectedSessionId === null;
+  deleteSessionBtn.disabled = !connected || selectedSessionId === null;
+  deleteAllBtn.disabled = !connected || visibleSessionCount === 0;
   commandSelect.disabled = !connected || selectedSessionId === null || commands.length === 0;
   runCommandBtn.disabled = !connected || selectedSessionId === null || commandSelect.value === "";
 }
@@ -139,6 +144,7 @@ async function refreshSessions(): Promise<void> {
   const sorted = [...result.value]
     .filter((session) => extensionIds.has(session.id))
     .sort((a, b) => b.time.updated - a.time.updated);
+  visibleSessionCount = sorted.length;
   if (sorted.length === 0) {
     const placeholder = document.createElement("option");
     placeholder.value = "";
@@ -146,6 +152,7 @@ async function refreshSessions(): Promise<void> {
     placeholder.disabled = true;
     sessionSelect.appendChild(placeholder);
     sessionSelect.value = "";
+    updateControls();
     return;
   }
   for (const session of sorted) {
@@ -157,6 +164,7 @@ async function refreshSessions(): Promise<void> {
     sessionSelect.appendChild(option);
   }
   sessionSelect.value = selectedSessionId ?? "";
+  updateControls();
 }
 
 async function selectSession(id: string): Promise<void> {
@@ -183,6 +191,70 @@ async function createNewSession(): Promise<void> {
   await addExtensionSessionId(result.value);
   await refreshSessions();
   await selectSession(result.value);
+}
+
+function clearSelectedSession(): void {
+  selectedSessionId = null;
+  thread = [];
+  messageEls.clear();
+  partEls.clear();
+  renderThread();
+  updateControls();
+}
+
+function appendError(message: string): void {
+  const err = document.createElement("div");
+  err.className = "send-error";
+  err.textContent = message;
+  messagesEl.appendChild(err);
+  scrollToBottom();
+}
+
+async function deleteCurrentSession(): Promise<void> {
+  if (selectedSessionId === null || !connected) {
+    return;
+  }
+  const id = selectedSessionId;
+  const title = sessionSelect.selectedOptions[0]?.textContent ?? "this session";
+  if (!confirm(`Delete session "${title}"? This cannot be undone.`)) {
+    return;
+  }
+  const result = await api.deleteSession(id);
+  if (!result.ok) {
+    appendError(describeError(result.error));
+    return;
+  }
+  await removeExtensionSessionIds([id]);
+  const pending = await getPendingSessionId();
+  if (pending === id) {
+    await clearPendingSessionId();
+  }
+  clearSelectedSession();
+  await refreshSessions();
+}
+
+async function deleteAllSessions(): Promise<void> {
+  if (!connected) {
+    return;
+  }
+  const ids = await getExtensionSessionIds();
+  if (ids.length === 0) {
+    return;
+  }
+  if (!confirm(`Delete all ${ids.length} sessions created by this extension? This cannot be undone.`)) {
+    return;
+  }
+  const results = await Promise.allSettled(ids.map((id) => api.deleteSession(id)));
+  const failed = results.filter(
+    (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
+  ).length;
+  await removeExtensionSessionIds(ids);
+  await clearPendingSessionId();
+  clearSelectedSession();
+  await refreshSessions();
+  if (failed > 0) {
+    appendError(`Deleted ${ids.length - failed} of ${ids.length} sessions.`);
+  }
 }
 
 function renderThread(): void {
@@ -352,6 +424,14 @@ abortBtn.addEventListener("click", () => {
 });
 newSessionBtn.addEventListener("click", () => {
   void createNewSession();
+});
+
+deleteSessionBtn.addEventListener("click", () => {
+  void deleteCurrentSession();
+});
+
+deleteAllBtn.addEventListener("click", () => {
+  void deleteAllSessions();
 });
 
 commandSelect.addEventListener("change", () => {

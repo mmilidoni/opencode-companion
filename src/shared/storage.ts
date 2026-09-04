@@ -58,6 +58,15 @@ export async function addExtensionSessionId(id: string): Promise<void> {
   await chrome.storage.local.set({ [EXTENSION_SESSION_IDS_KEY]: capped });
 }
 
+export async function removeExtensionSessionIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const toRemove = new Set(ids);
+  const remaining = (await getExtensionSessionIds()).filter((id) => !toRemove.has(id));
+  await chrome.storage.local.set({ [EXTENSION_SESSION_IDS_KEY]: remaining });
+}
+
 const PENDING_SESSION_ID_KEY = "pendingSessionId";
 
 export async function getPendingSessionId(): Promise<string | null> {

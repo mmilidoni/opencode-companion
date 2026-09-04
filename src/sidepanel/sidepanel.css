@@ -281,6 +281,14 @@ button:disabled {
   background: transparent;
 }
 
+.btn-ghost.danger {
+  color: #cf222e;
+}
+
+.btn-ghost.danger:hover:not(:disabled) {
+  background: #ffebe9;
+}
+
 #send {
   background: #1f6feb;
   border-color: #1f6feb;
