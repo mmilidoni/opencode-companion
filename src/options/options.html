@@ -2,7 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Options</title>
+    <title>Companion for OpenCode — Options</title>
+    <link rel="stylesheet" href="options.css" />
   </head>
-  <body></body>
+  <body>
+    <main class="container">
+      <h1>Companion for OpenCode</h1>
+
+      <form id="options-form">
+        <section>
+          <h2>Server</h2>
+          <label for="server-url">Server URL</label>
+          <input id="server-url" type="url" spellcheck="false" placeholder="http://localhost:4096" />
+          <label for="server-password">Password</label>
+          <input id="server-password" type="password" autocomplete="off" spellcheck="false" />
+          <p class="hint">Password is stored locally in this browser only, never synced. Leave empty when the server has no password.</p>
+        </section>
+
+        <section>
+          <h2>Sending</h2>
+          <label for="delivery-mode">Deliver to</label>
+          <select id="delivery-mode">
+            <option value="headless">New opencode session</option>
+            <option value="tui">Open TUI prompt</option>
+          </select>
+          <p class="hint">TUI mode needs an opencode TUI running on this server's port (e.g. <code>opencode --port 4096</code>).</p>
+
+          <label class="check-row">
+            <input type="checkbox" id="auto-open-panel" />
+            Auto-open side panel after sending
+          </label>
+
+          <label class="check-row">
+            <input type="checkbox" id="auto-submit-tui" />
+            Auto-submit prompts in TUI mode (off = append only)
+          </label>
+
+          <label for="page-char-limit">Page character limit</label>
+          <input id="page-char-limit" type="number" min="1000" max="500000" step="1000" />
+          <p class="hint">Maximum characters captured when sending a whole page.</p>
+        </section>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <span id="saved" class="saved" hidden>Saved</span>
+        </div>
+      </form>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
 </html>

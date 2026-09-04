@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "zip": "node scripts/zip.mjs"
   },
   "devDependencies": {
     "@opencode-ai/sdk": "1.18.27",
