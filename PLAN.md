@@ -370,12 +370,14 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 
 ## 12. Firefox port (MV3) — plan
 
-**Status:** implemented 2026-09-05 (F0–F5 code + build pipeline done; F6
-manual verification pending in real Firefox). Decision locked 2026-09-05: chat
-surface = `sidebar_action` (Firefox-native sidebar). **Effort: ~3–3.5
-person-days dev + AMO review latency (~1 week calendar).** Single repo +
-platform shim, dual build output — **not** a hard fork (avoids the drift
-warned about in §9).
+**Status:** implemented and verified 2026-09-05 — F0–F5 code + build pipeline
+done; F6 manual verification passed in a real Firefox session (both delivery
+modes, context-menu + shortcut sends, sidebar auto-open + session selection,
+notifications, reconnect). Ready to merge to `main` after review. Decision
+locked 2026-09-05: chat surface = `sidebar_action` (Firefox-native sidebar).
+**Effort: ~3–3.5 person-days dev + AMO review latency (~1 week calendar).**
+Single repo + platform shim, dual build output — **not** a hard fork (avoids
+the drift warned about in §9).
 
 ### 12.1 What works as-is (verified against current Firefox MV3 docs)
 
