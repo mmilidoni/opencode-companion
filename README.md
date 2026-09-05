@@ -34,7 +34,8 @@ Source: [github.com/mmilidoni/opencode-companion](https://github.com/mmilidoni/o
 
 ## Requirements
 
-- Chrome 116 or newer
+- Chrome 116 or newer, **or** Firefox 140 or newer (Firefox uses the native
+  sidebar — `sidebar_action` — instead of Chrome's side panel)
 - [opencode](https://opencode.ai) CLI with a running server
 
 ## Setup
@@ -66,6 +67,17 @@ Then in Chrome:
 1. Go to `chrome://extensions`
 2. Enable **Developer mode**
 3. **Load unpacked** → select this folder (the one containing `manifest.json`)
+
+### 2b. Firefox build
+
+The same `npm run build` also emits `dist-firefox/`, a self-contained Firefox
+extension. To load it temporarily:
+
+1. Go to `about:debugging#/runtime/this-firefox`
+2. **Load Temporary Add-on…** → select `dist-firefox/manifest.json`
+
+The chat surface opens in Firefox's native sidebar (`sidebar_action`) instead
+of a side panel; everything else behaves the same.
 
 ### 3. Configure
 
@@ -105,6 +117,7 @@ port.
   actions
 - `sidePanel` — the chat panel
 - `notifications` — send confirmation and error feedback
+- `alarms` — periodic server-health checks for the badge
 - `host_permissions`: `http://localhost/*`, `http://127.0.0.1/*` only — no
   `<all_urls>`, no remote servers
 
@@ -114,8 +127,9 @@ See [PRIVACY.md](./PRIVACY.md) for the full privacy policy.
 
 ```sh
 npm run typecheck   # tsc --noEmit (run before every build)
-npm run build       # esbuild bundles src/ -> dist/
-npm run zip         # package the extension for the Chrome Web Store
+npm run build       # esbuild bundles src/ -> dist/ (Chrome) and dist-firefox/ (Firefox)
+npm run zip         # package the Chrome build for the Chrome Web Store
+npm run zip:firefox # package dist-firefox/ (xpi layout) for AMO
 ```
 
 ## License

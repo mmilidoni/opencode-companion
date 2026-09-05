@@ -7,7 +7,8 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
-    "zip": "node scripts/zip.mjs"
+    "zip": "node scripts/zip.mjs",
+    "zip:firefox": "node scripts/zip-firefox.mjs"
   },
   "devDependencies": {
     "@opencode-ai/sdk": "1.18.27",
