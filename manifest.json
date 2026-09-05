@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Send selected text and page content from any website into your local opencode agent. Unofficial, open-source.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "sidePanel", "notifications"],
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "sidePanel", "notifications", "alarms"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "dist/sw.js", "type": "module" },
   "action": {

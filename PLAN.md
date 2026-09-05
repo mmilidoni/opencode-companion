@@ -1,6 +1,6 @@
 # PLAN — "Companion for OpenCode" Chrome extension (MV3)
 
-Status: approved for phased execution. Last updated: 2026-09-04.
+Status: approved for phased execution. Last updated: 2026-09-05.
 Blast radius: **zero** — standalone repo; no code or dependencies shared with any
 other project.
 
@@ -316,7 +316,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 
 **Still deferred:**
 6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost); the manifest key stays removed from the shipped build until then
-7. Firefox port (MV3) — a fork, not a feature: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
+7. Firefox port (MV3) — planned in §12: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
@@ -365,3 +365,100 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 | Keybinding | Ctrl+Shift+U (send selection) | After first real usage |
 | Phase 3 scope | Ship side panel + streaming chat in v0.1 | After first real usage |
 | Side panel trigger | Popup button → `chrome.sidePanel.open()` (Chrome 116+) | — |
+
+---
+
+## 12. Firefox port (MV3) — plan
+
+**Status:** implemented 2026-09-05 (F0–F5 code + build pipeline done; F6
+manual verification pending in real Firefox). Decision locked 2026-09-05: chat
+surface = `sidebar_action` (Firefox-native sidebar). **Effort: ~3–3.5
+person-days dev + AMO review latency (~1 week calendar).** Single repo +
+platform shim, dual build output — **not** a hard fork (avoids the drift
+warned about in §9).
+
+### 12.1 What works as-is (verified against current Firefox MV3 docs)
+
+- `chrome.storage.local`, `contextMenus`, `notifications`, `commands`, `action`
+  badge, `scripting.executeScript`, `runtime` messaging. Firefox MV3 supports
+  promises on the `chrome.*` namespace (so `.catch(() => {})` fire-and-forget
+  sends behave like Chrome).
+- SDK deep-import `@opencode-ai/sdk/client`, basic-auth fetch wrapper, and the
+  SSE `/event` stream (fetch-based, not `EventSource`) — all environment-agnostic.
+- Extension pages as ESM (`<script type="module">` + top-level `await`) — supported.
+- `marked` + `dompurify` — pure JS, no browser coupling.
+- Existing `host_permissions` (`http://localhost/*`, `http://127.0.0.1/*`) grant
+  fetch-from-extension-pages access to localhost (CORS bypass) in Firefox MV3.
+
+### 12.2 The gaps that cost
+
+| # | Gap | Chrome | Firefox | Cost |
+|---|---|---|---|---|
+| 1 | Chat surface | `chrome.sidePanel` (114+) | No `sidePanel` API — `sidebar_action` (kept in MV3) | 1 day |
+| 2 | Background | `service_worker` + `"type": "module"` | Event page (`background.scripts`, `persistent: false`); module SW unsupported → sw bundle IIFE, not ESM | ½ day |
+| 3 | Manifest | `minimum_chrome_version` | `browser_specific_settings.gecko` (id + `strict_min_version`) | ¼ day |
+| 4 | localhost fetch | host_permissions bypass CORS | Same patterns work, but auto-granted only from Firefox 127; on 109–126 must request at runtime or bump min version | ¼ day |
+| 5 | Packaging | `scripts/zip.mjs` → CWS | `web-ext build`/`sign` → `.xpi` (same manifest-at-root layout) + AMO listing | ½ day |
+| 6 | `chrome.sidePanel.open()` call sites | 3 sites (SW ×2, popup ×1) | `browser.sidebarAction.open()` behind a platform shim | folded into #1 |
+
+### 12.3 Phases (each gated on review; rollback = delete the firefox branch)
+
+- **F0 — Spike (½ day):** temporary-load in Firefox; prove (a) localhost
+  `host_permissions` fetch works, (b) SDK SSE stream works, (c) sw bundles as
+  IIFE and loads as an event page. Gates everything; downside bounded by the
+  raw-fetch fallback already designed in `shared/opencode.ts`.
+  - **Accept:** health probe green in the popup; `/event` streams into the
+    side panel; badge updates.
+- **F1 — Build + manifest (½ day):** conditional IIFE bundle for `sw` in
+  `esbuild.config.mjs`; emit `dist-firefox/`; `background: { scripts: ["dist-firefox/sw.js"], persistent: false }`;
+  `browser_specific_settings.gecko` with id + `strict_min_version: "127"`;
+  drop `sidePanel` permission; add `sidebar_action` manifest key.
+  - **Accept:** `npm run typecheck` clean; `web-ext run`/load-temporary loads
+    without manifest warnings.
+- **F2 — Panel shim (1 day):** `shared/platform.ts` — `isFirefox()` detection +
+  `openPanel()` wrapper (`chrome.sidePanel.open({ windowId })` vs
+  `browser.sidebarAction.open()`); replace the 3 call sites (SW context-menu
+  path, SW command path, popup "Open panel" button).
+  - **Gesture audit:** `sidebarAction.open()` carries the same
+    synchronous-in-gesture rule (Mozilla bug 1800401). Existing
+    `openPanelIfConfigured`/command handler already comply — verify, don't rewrite.
+  - **Accept:** context menu, Ctrl+Shift+U, and popup button all open the
+    sidebar; auto-open behavior matches Chrome.
+- **F3 — Health poll (¼ day):** replace recursive `setTimeout` with
+  `chrome.alarms` (supported in both) so the badge stays fresh when the event
+  page sleeps.
+  - **Accept:** badge reflects server state without the SW being force-awake.
+- **F4 — Permission onboarding (¼ day):** `strict_min_version: "140.0"` chosen —
+  140 is the ESR line and the first version with the built-in data-collection
+  consent UI (so `data_collection_permissions` needs no custom consent
+  handling); host permissions are shown + granted at install (Firefox 127+).
+  Declared `required: ["websiteContent"]` — the only data transmitted, and it
+  is the extension's core function. Runtime `permissions.request` path only if
+  <140 support is ever required — deferred.
+- **F5 — Packaging + AMO (½ day):** `web-ext build`/`sign` → `.xpi`; AMO
+  listing from existing `STORE.md`/`PRIVACY.md`; human review adds days of
+  latency, zero dev effort.
+- **F6 — Verification (½–1 day):** both delivery modes (headless + TUI),
+  keyboard shortcut, notifications, sidebar open/close, reconnect after server
+  restart, second machine.
+
+### 12.4 Firefox risk register
+
+| Risk | L×I | Mitigation |
+|---|---|---|
+| localhost fetch blocked by CORS/host-permission quirks | Med × High | F0 spike first; exact match patterns; runtime-request fallback for <127 |
+| Event-page suspension kills `setTimeout` health poll → stale badge | Med × Med | `chrome.alarms` (F3), works in both browsers |
+| `Ctrl+Shift+U` collides with a Firefox default | Low × Med | Verify in F6; user-remappable at `about:addons` |
+| AMO review friction on localhost host_permissions | Low × Med | Same strong privacy story as CWS (§8) |
+| `browser.sidebarAction` outside `@types/chrome` | Low × Low | Manual type declarations in `shared/platform.ts`; no new dev dependency (repo rule) |
+
+### 12.5 Must vs nice-to-do
+
+**Must:** F0–F3, F5–F6. **Nice-to-do:** F4 runtime-request path,
+`_execute_sidebar_action` keyboard shortcut.
+
+### 12.6 Rollback
+
+All changes sit behind `shared/platform.ts` and a separate `dist-firefox/`
+output; the Chrome manifest, Chrome esbuild path, and `scripts/zip.mjs` remain
+untouched.

@@ -1,5 +1,6 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { OpenCodeError } from "../shared/opencode.js";
+import { openPanel } from "../shared/platform.js";
 import { composePrompt, parseGithubIssue } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
 import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
@@ -7,7 +8,7 @@ import type { Settings } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
 import type { TextPartInput } from "@opencode-ai/sdk/client";
 
-const HEALTH_CHECK_INTERVAL_MS = 30_000;
+const HEALTH_CHECK_ALARM = "health-check";
 const BADGE_FLASH_MS = 2_500;
 
 const MENU_SEND_SELECTION = "send-selection";
@@ -52,10 +53,15 @@ async function checkHealth(): Promise<void> {
 }
 
 function scheduleHealthCheck(): void {
-  setTimeout(() => {
-    void checkHealth();
-    scheduleHealthCheck();
-  }, HEALTH_CHECK_INTERVAL_MS);
+  // An alarm (not a recursive setTimeout) keeps the badge fresh even when a
+  // Firefox event page is suspended between checks. Firefox MV3 event pages
+  // and Chrome service workers both wake on their alarms.
+  void chrome.alarms.create(HEALTH_CHECK_ALARM, { periodInMinutes: 0.5 }).catch(() => {});
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === HEALTH_CHECK_ALARM) {
+      void checkHealth();
+    }
+  });
 }
 
 function notify(id: string, title: string, message: string): void {
@@ -134,14 +140,14 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
   flashBadge();
 }
 
-// Must stay synchronous: no await may precede chrome.sidePanel.open() or the
-// user-gesture context is lost and the call rejects.
+// Must stay synchronous: no await may precede openPanel() or the user-gesture
+// context is lost and the call rejects (in both Chrome and Firefox).
 function openPanelIfConfigured(tab?: chrome.tabs.Tab): void {
   if (!cachedSettings.autoOpenPanel || tab?.windowId === undefined) {
     return;
   }
   try {
-    void chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+    void openPanel(tab.windowId).catch(() => {});
   } catch {
     // Ignore — gesture context unavailable.
   }
@@ -255,7 +261,7 @@ chrome.commands.onCommand.addListener((command) => {
   }
   if (cachedSettings.autoOpenPanel && activeWindowId !== undefined) {
     try {
-      void chrome.sidePanel.open({ windowId: activeWindowId }).catch(() => {});
+      void openPanel(activeWindowId).catch(() => {});
     } catch {
       // Ignore — gesture context unavailable.
     }

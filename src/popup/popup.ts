@@ -1,5 +1,6 @@
 import { getSettings, saveSettings } from "../shared/storage.js";
 import type { DeliveryMode } from "../shared/storage.js";
+import { openPanel, isFirefox } from "../shared/platform.js";
 import type { ConnectionResult, OpenCodeError } from "../shared/opencode.js";
 import type { BackgroundMessage } from "../shared/types.js";
 
@@ -69,9 +70,16 @@ testButton.addEventListener("click", () => {
 
 openPanelButton.addEventListener("click", () => {
   void (async () => {
+    if (isFirefox) {
+      // Firefox's sidebarAction.open() takes no window id and must be called
+      // before any await to hold the user gesture (Mozilla bug 1800401).
+      await openPanel();
+      window.close();
+      return;
+    }
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.windowId !== undefined) {
-      await chrome.sidePanel.open({ windowId: tab.windowId });
+      await openPanel(tab.windowId);
       window.close();
     }
   })();

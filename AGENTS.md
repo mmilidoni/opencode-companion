@@ -1,21 +1,30 @@
 # AGENTS.md
 
-Manifest V3 Chrome extension that pushes browser context (selection / page) into
-a local [opencode](https://opencode.ai) server and chats with it in a side
-panel. TypeScript + esbuild, hand-written manifest, no test framework.
+Manifest V3 browser extension (Chrome + Firefox) that pushes browser context
+(selection / page) into a local [opencode](https://opencode.ai) server and
+chats with it in a side panel / sidebar. TypeScript + esbuild, hand-written
+manifest, no test framework.
 
 ## Commands (order matters)
 
 - `npm run typecheck` — `tsc --noEmit`. **Run before every build**; esbuild does
   not type-check. This is the only automated check in the repo.
-- `npm run build` — esbuild bundles `src/*` → `dist/` (ESM for `sw.js` and all
-  extension pages; the `content/capture` entry only builds if the file exists —
-  it doesn't, page capture uses inline `executeScript` funcs).
+- `npm run build` — esbuild bundles `src/*` → **two targets**: `dist/` (Chrome,
+  ESM `sw.js` module service worker) and `dist-firefox/` (self-contained
+  Firefox extension, IIFE `sw.js` loaded as an event page). The
+  `content/capture` entry only builds if the file exists — it doesn't, page
+  capture uses inline `executeScript` funcs. `dist-firefox/manifest.json` is
+  generated from `manifest.json` (gecko settings, `background.scripts`,
+  `sidebar_action`, no `sidePanel` permission) — never hand-edit it.
 - `npm run zip` — produces `opencode-companion-<version>.zip` with
   `manifest.json` at the zip root (CWS requirement). Version must stay aligned
   between `package.json` and `manifest.json`.
+- `npm run zip:firefox` — produces `opencode-companion-<version>-firefox.zip`
+  (xpi layout) from `dist-firefox/`.
 - No tests exist. The safety net is `chrome://extensions` → Load unpacked →
-  repo root, then the manual flows in `PLAN.md` §7 acceptance criteria.
+  repo root (Chrome) and `about:debugging#/runtime/this-firefox` → Load
+  Temporary Add-on → `dist-firefox/manifest.json` (Firefox), then the manual
+  flows in `PLAN.md` §7 acceptance criteria.
 
 ## Workflow conventions
 
@@ -47,13 +56,18 @@ panel. TypeScript + esbuild, hand-written manifest, no test framework.
 - **No top-level `await` in `src/background/sw.ts`** — module service workers
   cannot evaluate it and registration fails with status 3. The settings cache
   is seeded from `DEFAULT_SETTINGS` and refreshed via `.then()`.
-- **`chrome.sidePanel.open()` requires a synchronous call inside the user
-  gesture** — ANY await before it (storage read, `tabs.query`, network)
-  invalidates the gesture. `contextMenus.onClicked` opens the panel first
-  using the `tab` param; the keyboard command uses a tracked
+- **`openPanel()` in `src/shared/platform.ts` must be called synchronously
+  inside the user gesture** — ANY await before it (storage read, `tabs.query`,
+  network) invalidates the gesture, in Chrome (`chrome.sidePanel.open()`) and
+  Firefox (`browser.sidebarAction.open()`, Mozilla bug 1800401). The shim is
+  the ONLY place that calls either API — never call `chrome.sidePanel` or
+  `browser.sidebarAction` directly. `contextMenus.onClicked` opens the panel
+  first using the `tab` param; the keyboard command uses a tracked
   `activeWindowId`. Session selection after the (async) send is driven by
   `pendingSessionId` in storage, consumed by the panel on load, via a 1.5s
   poll, and a live `select-session` message.
+- Health checks run on a `chrome.alarms` period (not a recursive `setTimeout`)
+  so the badge stays fresh when a Firefox event page is suspended.
 - SW does short-lived requests only (`prompt_async`, 204). SSE `/event` is
   consumed **only** from the side panel page, never the SW.
 - Message protocol lives in `src/shared/types.ts` (`check-connection`,
@@ -78,6 +92,7 @@ panel. TypeScript + esbuild, hand-written manifest, no test framework.
 - `src/background/sw.ts` — context menus, command handler, send pipeline
   (selection/page → `composePrompt` → headless session or TUI append).
 - `src/shared/` — `opencode.ts` (SDK facade + auth), `storage.ts`,
+  `platform.ts` (Chrome `sidePanel` ↔ Firefox `sidebarAction` shim),
   `prompt.ts` (untrusted-content delimiters + guard note; captured web content
   is data, never instructions), `types.ts`.
 - `src/sidepanel/` — sessions dropdown, thread, streaming chat. Renders
