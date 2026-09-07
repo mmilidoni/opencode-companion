@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Companion for OpenCode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send selected text and page content from any website into your local opencode agent. Unofficial, open-source.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "contextMenus", "activeTab", "scripting", "sidePanel", "notifications", "alarms"],
