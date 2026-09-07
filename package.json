@@ -1,6 +1,6 @@
 {
   "name": "opencode-companion",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Send selected text and page content from any website into your local opencode agent. Unofficial, open-source.",
   "private": true,
   "type": "commonjs",
