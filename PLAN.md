@@ -18,8 +18,11 @@ Store.
 ### In scope (MVP)
 - Connect to a local `opencode serve` instance (default `http://localhost:4096`).
 - Context-menu + keyboard-shortcut sends: **selection** and **page**.
-- Two delivery modes:
-  - **Headless session** (default): `POST /session` → `prompt_async` (fire-and-forget).
+- Two/three delivery modes:
+  - **Draft** (default): creates a session and opens the side panel with the
+    composed prompt pre-filled — nothing is submitted until the user reviews
+    and sends from the panel, so no tokens are spent on auto-submit.
+  - **Headless session**: `POST /session` → `prompt_async` (fire-and-forget).
   - **TUI mode** (opt-in): push into a TUI the user already has open via
     `/tui/append-prompt` (append-only by default; auto-submit is a config flag, off).
 - Side panel: session list, message thread, prompt box, abort, streaming via `/event` SSE.
@@ -297,6 +300,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 | CWS review friction | Low × Med | No `<all_urls>`; localhost-only hosts; strong privacy story; "X for OpenCode" third-party naming already established on CWS; "unofficial" + repo link in description |
 | Password mishandling | Low × Med | `chrome.storage.local` only; never logged; basic-auth header constructed in memory |
 | `activeTab` grant surprises (page send without user gesture) | Low × Med | All sends originate from a user gesture (context menu, shortcut, panel button) |
+| Draft never sent (panel closed; orphaned `pendingDraft`) | Low × Low | `pendingDraft`/`pendingSessionId` are inert single-entry keys, cleared on the next panel load; draft mode also removes the auto-run exposure from the headless path |
 | TUI mode silently broken (TUI on a random port / no TUI attached to that server) | Med × Med | README + options mandate `opencode --port <n>`; surface an actionable "TUI unreachable" error |
 | SSE auth impossible via `EventSource` | Med × High | Eliminated by design — SDK `event.subscribe()` (fetch-streaming) in the panel (§3.2) |
 | SDK lacks `promptAsync` | Low × Med | Phase 0 gate verifies; raw-fetch fallback for that one endpoint |
@@ -314,17 +318,20 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 4. GitHub-issue-aware capture — `parseGithubIssue()` adds structured issue context (owner/repo/number) to composed prompts
 5. Session deletion — side-panel "Delete" (current) and "Delete all" (all extension-created sessions), both `confirm()`-gated; `DELETE /session/{id}` per session (no bulk endpoint)
 
+**Implemented 2026-09-07:**
+6. Draft delivery mode — compose + create session + open the panel with a compact preview strip above the composer (label + truncated capture + discard); nothing submitted until the user sends. New default delivery mode. `pendingDraft` (structured: `sessionId`/`prompt`/`preview`/`label`) staged in `chrome.storage.local`, consumed by the panel after the pending session is selected; Send prepends any typed instruction to the capture.
+
 **Still deferred:**
-6. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost); the manifest key stays removed from the shipped build until then
-7. Firefox port (MV3) — planned in §12: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
+7. Remote servers via `optional_host_permissions` — needs the runtime `chrome.permissions.request` flow and a security pass (password leaves localhost); the manifest key stays removed from the shipped build until then
+8. Firefox port (MV3) — planned in §12: no `chrome.sidePanel` (use `sidebar_action`), no module service worker
 
 ---
 
 ## 10. CWS submission checklist
 
 - [x] Privacy policy drafted (`PRIVACY.md`, covers CWS data categories)
-- [ ] One-time $5 developer registration
-- [ ] Privacy policy live at public URL — GitHub Pages: merge `phase/4-cws` →
+- [x] One-time $5 developer registration
+- [x] Privacy policy live at public URL — GitHub Pages: merge `phase/4-cws` →
       `main`, push, then Settings → Pages → Deploy from a branch → `main` / `(root)`;
       verify `https://mmilidoni.github.io/opencode-companion/PRIVACY.html` (root
       `index.html` is the landing page; don't rename the repo — the URL is tied to it)
@@ -336,7 +343,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
       graphics from the icon; optional, recommended)
 - [x] `npm run zip` artifact; version matches `manifest.json` and `package.json`
 - [x] Naming: "Companion for OpenCode", description notes "unofficial", links repo
-- [ ] Developer email set in the CWS developer account
+- [x] Developer email set in the CWS developer account
 - [x] `optional_host_permissions` removed from manifest for the first review
       (re-add only when remote servers ship — §9 item 6)
 
@@ -360,7 +367,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 |---|---|---|
 | Name | "Companion for OpenCode", repo `opencode-companion` | Before CWS submission |
 | Client | `@opencode-ai/sdk` via `createOpencodeClient({ baseUrl, fetch })` + raw-fetch fallback | Phase 0 gate fails |
-| Delivery | Headless session default; TUI mode opt-in | User feedback |
+| Delivery | Headless session default; TUI mode opt-in → **draft mode default (2026-09-07)** | User feedback |
 | Toolchain | esbuild + hand-written manifest (no wxt) | If multi-browser or HMR needed |
 | Keybinding | Ctrl+Shift+U (send selection) | After first real usage |
 | Phase 3 scope | Ship side panel + streaming chat in v0.1 | After first real usage |
