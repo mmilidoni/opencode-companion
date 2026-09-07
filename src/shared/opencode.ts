@@ -22,6 +22,16 @@ export type ConnectionResult = Result<HealthInfo>;
 
 export type MessageThreadEntry = { info: Message; parts: Part[] };
 
+/** Minimal view of the merged server config (GET /config) needed to resolve the default provider/model. */
+export interface OpenCodeConfig {
+  /** Default model in "provider/model" form. */
+  model?: string;
+  /** Small model (title generation etc.) in "provider/model" form. */
+  small_model?: string;
+  /** Per-agent config; each entry may override the model. */
+  agent?: Record<string, { model?: string } | undefined>;
+}
+
 export interface OpenCodeApi {
   health(): Promise<Result<HealthInfo>>;
   createSession(title: string): Promise<Result<string>>;
@@ -38,6 +48,7 @@ export interface OpenCodeApi {
   runCommand(sessionId: string, command: string, args: string): Promise<Result<void>>;
   listAgents(): Promise<Result<Agent[]>>;
   listProviders(): Promise<Result<{ providers: { id: string; name: string; models: Record<string, unknown> }[] }>>;
+  getConfig(): Promise<Result<OpenCodeConfig>>;
   appendPromptTui(text: string): Promise<Result<void>>;
   submitPromptTui(): Promise<Result<void>>;
   /** `/event` SSE bus; auto-reconnects with exponential backoff. */
@@ -228,6 +239,12 @@ async listCommands() {
       return run(async () => {
         const providers = await client.config.providers({ throwOnError: true });
         return providers.data;
+      });
+    },
+    async getConfig() {
+      return run(async () => {
+        const config = await client.config.get({ throwOnError: true });
+        return config.data;
       });
     },
     async appendPromptTui(text) {

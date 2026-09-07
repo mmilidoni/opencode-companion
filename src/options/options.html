@@ -24,9 +24,10 @@
           <label for="delivery-mode">Deliver to</label>
           <select id="delivery-mode">
             <option value="headless">New opencode session</option>
+            <option value="draft">Draft in side panel (review before send)</option>
             <option value="tui">Open TUI prompt</option>
           </select>
-          <p class="hint">TUI mode needs an opencode TUI running on this server's port (e.g. <code>opencode --port 4096</code>).</p>
+          <p class="hint">Draft mode stages the prompt in the side panel — nothing is sent until you press Send. TUI mode needs an opencode TUI running on this server's port (e.g. <code>opencode --port 4096</code>).</p>
 
           <label class="check-row">
             <input type="checkbox" id="auto-open-panel" />
