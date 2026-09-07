@@ -22,6 +22,11 @@
     </main>
 
     <footer class="composer">
+      <div id="draft-preview" class="draft-preview" hidden>
+        <span id="draft-label" class="draft-label"></span>
+        <span id="draft-text" class="draft-text"></span>
+        <button id="draft-dismiss" type="button" class="btn-ghost draft-dismiss" aria-label="Discard capture">✕</button>
+      </div>
       <textarea id="prompt" rows="2" placeholder="Message opencode…" spellcheck="false"></textarea>
       <div class="composer-row">
         <select id="command-select" class="command-select" aria-label="Slash command">

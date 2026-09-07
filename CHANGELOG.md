@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions are [SemVer](https://semver.org/)-style while in 0.x.
 
+## [0.3.0] - 2026-09-07
+
+### Added
+
+- **Draft delivery mode (new default)** — sending a selection or page now
+  stages the prompt in the side panel as a compact preview strip (label +
+  truncated capture + discard) instead of submitting immediately. Nothing is
+  sent and no tokens are spent until you press **Send** from the panel; the
+  panel opens automatically in draft mode even when auto-open is off. Switch
+  back to instant delivery ("New opencode session" or "Open TUI prompt") in
+  the options page.
+- **Default model resolution** — the extension reads the server's merged
+  config (`GET /config`) to resolve the default provider/model; the options
+  page model dropdown also seeds the currently selected model when the
+  provider exposes no model list.
+
+### Changed
+
+- Popup simplified to server URL / password / connection test — delivery mode
+  and auto-open behaviour now live in the options page only.
+- Refreshed Chrome Web Store screenshots (side panel, context menu, popup,
+  options page) from new captures.
+
 ## [0.2.0] - 2026-09-07
 
 ### Added

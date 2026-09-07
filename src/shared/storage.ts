@@ -1,4 +1,4 @@
-export type DeliveryMode = "headless" | "tui";
+export type DeliveryMode = "headless" | "tui" | "draft";
 
 export interface Settings {
   serverUrl: string;
@@ -18,7 +18,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   serverUrl: "http://localhost:4096",
   serverPassword: "",
-  deliveryMode: "headless",
+  deliveryMode: "draft",
   autoSubmitTui: false,
   pageCharLimit: 20_000,
   autoOpenPanel: true,
@@ -81,4 +81,33 @@ export async function setPendingSessionId(id: string): Promise<void> {
 
 export async function clearPendingSessionId(): Promise<void> {
   await chrome.storage.local.remove(PENDING_SESSION_ID_KEY);
+}
+
+export interface PendingDraft {
+  /** Session the capture belongs to — the draft is discarded when the user switches away from it. */
+  sessionId: string;
+  /** Full composed prompt (delimiters + guard note) that will be sent. */
+  prompt: string;
+  /** Raw captured content, single-line, truncated for the composer preview strip. */
+  preview: string;
+  /** Short label shown next to the preview, e.g. "Selected text" / "Page". */
+  label: string;
+}
+
+const PENDING_DRAFT_KEY = "pendingDraft";
+
+export async function setPendingDraft(draft: PendingDraft): Promise<void> {
+  await chrome.storage.local.set({ [PENDING_DRAFT_KEY]: draft });
+}
+
+export async function getPendingDraft(): Promise<PendingDraft | null> {
+  const stored = await chrome.storage.local.get(PENDING_DRAFT_KEY);
+  const draft = stored[PENDING_DRAFT_KEY] as PendingDraft | undefined;
+  return draft && typeof draft.sessionId === "string" && typeof draft.prompt === "string" && draft.prompt.length > 0
+    ? draft
+    : null;
+}
+
+export async function clearPendingDraft(): Promise<void> {
+  await chrome.storage.local.remove(PENDING_DRAFT_KEY);
 }

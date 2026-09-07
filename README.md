@@ -82,10 +82,10 @@ of a side panel; everything else behaves the same.
 ### 3. Configure
 
 Open the popup: set the server URL (and password, if the server requires one),
-pick the delivery mode, and hit **Save**. The status dot shows whether the
-server is reachable and whether it requires a password. Advanced options
-(page character limit, TUI auto-submit, agent & model defaults) live in the
-options page (right-click the extension → Options).
+and hit **Save**. The status dot shows whether the server is reachable and
+whether it requires a password. Delivery mode, auto-open behaviour, and the
+other advanced options (page character limit, TUI auto-submit, agent & model
+defaults) live in the options page (right-click the extension → Options).
 
 ## Usage
 

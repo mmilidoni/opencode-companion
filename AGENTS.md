@@ -35,6 +35,38 @@ manifest, no test framework.
 - `PLAN.md` is the authoritative design doc: API surface, permission model,
   risk register, phase structure. Read it before changing architecture.
 
+## Release runbook
+
+To cut a release, do all of these, in order — none is optional:
+
+1. **Bump the version** in three files so they stay aligned: `package.json`
+   (`version`), `manifest.json` (`version`), and `package-lock.json` (the root
+   `version` **and** `packages[""].version`). 0.x SemVer: minor for a feature,
+   patch for a fix.
+2. **Update `CHANGELOG.md`** — Keep-a-Changelog style (`### Added` / `### Changed`
+   / `### Fixed`) under a new `## [x.y.z] - YYYY-MM-DD` heading at the top.
+3. **Refresh the store screenshots.** New captures land in `images/` (any size);
+   reframe each into `images/store/<name>-1280x800.png`: a 1280×800 canvas with
+   a `#F6F8FA` background, the capture scaled to fit (contain) and centered,
+   high-quality bicubic interpolation. The marquee (`1400×560`) and promo tile
+   (`440×280`) are branded icon graphics — regenerate only if the icon/branding
+   changes.
+4. **Build & verify, in order:**
+   - `npm run typecheck` — must pass before building.
+   - `npm run build` — both `dist/` and `dist-firefox/`.
+   - `__PLATFORM__` check: `sidePanel` must be **absent** from `dist-firefox/`
+     and `sidebarAction` **absent** from `dist/` (grep the minified bundles).
+   - `npx web-ext lint --source-dir dist-firefox` — expect 0 errors (the 3×
+     sanitized-`innerHTML` and Android `strict_min_version` warnings are known).
+5. **Package** with `npm run zip` and `npm run zip:firefox`; confirm the zipped
+   `manifest.json` version matches.
+6. **Commit & tag:** put the work on a `phase/N-release-<version>` branch (never
+   commit to `main` directly), merge to `main` with a `merge: release <version>`
+   message, and add an annotated `v<version>` tag at the release commit.
+7. **Keep docs current:** README (setup/usage), STORE.md (listing copy + the
+   permission-justification table — any new permission must be added there),
+   PLAN.md (acceptance criteria).
+
 ## opencode SDK — non-obvious constraints (verified against 1.18.27)
 
 - **Always deep-import `@opencode-ai/sdk/client`.** The root entry
@@ -88,6 +120,11 @@ manifest, no test framework.
   `pageCharLimit`, `autoOpenPanel`, `agent`, `modelProviderId`, `modelId`) live
   in `chrome.storage.local` only — never `.sync`/`.session`. Password is never
   logged.
+- `deliveryMode` is one of `headless` (create session + submit), `tui`
+  (append to a TUI prompt), or `draft` — the **default** — which stages the
+  capture in the panel (`pendingDraft` in storage) and submits nothing until
+  the user sends from the panel. README documents only headless/tui; trust
+  `DEFAULT_SETTINGS` in `shared/storage.ts`, which is the source of truth.
 - **The side panel shows only sessions the extension created.** Session IDs
   are recorded in `extensionSessionIds` (capped at 1000) via
   `addExtensionSessionId()` — any new code path that creates a session must
@@ -99,7 +136,7 @@ manifest, no test framework.
 ## Layout
 
 - `src/background/sw.ts` — context menus, command handler, send pipeline
-  (selection/page → `composePrompt` → headless session or TUI append).
+  (selection/page → `composePrompt` → headless session, TUI append, or draft).
 - `src/shared/` — `opencode.ts` (SDK facade + auth), `storage.ts`,
   `platform.ts` (Chrome `sidePanel` ↔ Firefox `sidebarAction` shim),
   `prompt.ts` (untrusted-content delimiters + guard note; captured web content

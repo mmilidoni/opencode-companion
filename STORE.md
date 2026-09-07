@@ -64,6 +64,7 @@ extension developer or to any third party.
 | `activeTab` + `scripting` | Capture the current page/selection only when you trigger a send |
 | `sidePanel` | Show the chat panel |
 | `notifications` | Show send confirmation / error feedback |
+| `alarms` | Periodic health check (every 30s) so the toolbar badge reflects whether the local opencode server is reachable |
 | `host_permissions` (`http://localhost/*`, `http://127.0.0.1/*`) | Reach your local opencode server |
 
 The extension requests no permissions over arbitrary websites.

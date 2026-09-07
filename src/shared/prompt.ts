@@ -47,3 +47,11 @@ export function composePrompt(source: PromptSource, kind: ContentKind, content: 
   );
   return lines.join("\n");
 }
+
+const PREVIEW_MAX_CHARS = 120;
+
+/** Collapse whitespace and truncate captured content for a one-line preview. */
+export function contentPreview(content: string, maxChars: number = PREVIEW_MAX_CHARS): string {
+  const collapsed = content.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxChars ? `${collapsed.slice(0, maxChars).trimEnd()}…` : collapsed;
+}

@@ -94,12 +94,19 @@ function populateAgents(agents: { name: string; description?: string }[]): void 
 
 function populateModels(selectedModel: string): void {
   const provider = providers.find((p) => p.id === providerSelect.value);
+  const modelIds = Object.keys(provider?.models ?? {});
   modelSelect.textContent = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
   placeholder.textContent = "Server default";
   modelSelect.appendChild(placeholder);
-  for (const modelId of Object.keys(provider?.models ?? {})) {
+  if (modelIds.length === 0 && selectedModel) {
+    const seeded = document.createElement("option");
+    seeded.value = selectedModel;
+    seeded.textContent = selectedModel;
+    modelSelect.appendChild(seeded);
+  }
+  for (const modelId of modelIds) {
     const option = document.createElement("option");
     option.value = modelId;
     option.textContent = modelId;

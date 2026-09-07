@@ -1,9 +1,9 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { OpenCodeError } from "../shared/opencode.js";
 import { openPanel } from "../shared/platform.js";
-import { composePrompt, parseGithubIssue } from "../shared/prompt.js";
+import { composePrompt, parseGithubIssue, contentPreview } from "../shared/prompt.js";
 import type { ContentKind, PromptSource } from "../shared/prompt.js";
-import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId } from "../shared/storage.js";
+import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId, setPendingDraft } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
 import type { TextPartInput } from "@opencode-ai/sdk/client";
@@ -121,6 +121,23 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
     return;
   }
   await addExtensionSessionId(session.value);
+
+  if (settings.deliveryMode === "draft") {
+    // Stage the capture in the side panel as a compact preview — nothing is
+    // submitted until the user sends from the panel, so no tokens are spent.
+    await setPendingDraft({
+      sessionId: session.value,
+      prompt,
+      preview: contentPreview(content),
+      label: kind === "selection" ? "Selected text" : "Page",
+    });
+    await setPendingSessionId(session.value);
+    void chrome.runtime.sendMessage({ type: "select-session", sessionId: session.value }).catch(() => {});
+    notify("draft-ok", "Drafted", "Review and send in the side panel — nothing was submitted.");
+    flashBadge();
+    return;
+  }
+
   const model =
     settings.modelProviderId && settings.modelId
       ? { providerID: settings.modelProviderId, modelID: settings.modelId }
@@ -143,7 +160,12 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
 // Must stay synchronous: no await may precede openPanel() or the user-gesture
 // context is lost and the call rejects (in both Chrome and Firefox).
 function openPanelIfConfigured(tab?: chrome.tabs.Tab): void {
-  if (!cachedSettings.autoOpenPanel || tab?.windowId === undefined) {
+  if (tab?.windowId === undefined) {
+    return;
+  }
+  // Draft mode is pointless without the panel — always open it there, even
+  // when autoOpenPanel is off.
+  if (!cachedSettings.autoOpenPanel && cachedSettings.deliveryMode !== "draft") {
     return;
   }
   try {
@@ -259,7 +281,7 @@ chrome.commands.onCommand.addListener((command) => {
   if (command !== COMMAND_SEND_SELECTION) {
     return;
   }
-  if (cachedSettings.autoOpenPanel && activeWindowId !== undefined) {
+  if ((cachedSettings.autoOpenPanel || cachedSettings.deliveryMode === "draft") && activeWindowId !== undefined) {
     try {
       void openPanel(activeWindowId).catch(() => {});
     } catch {

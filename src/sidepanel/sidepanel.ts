@@ -1,7 +1,7 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
 import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
-import { getSettings, saveSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId } from "../shared/storage.js";
-import type { Settings } from "../shared/storage.js";
+import { getSettings, saveSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId, getPendingDraft, clearPendingDraft } from "../shared/storage.js";
+import type { PendingDraft, Settings } from "../shared/storage.js";
 import type { TextPart } from "@opencode-ai/sdk/client";
 import type { Command } from "@opencode-ai/sdk/client";
 import DOMPurify from "dompurify";
@@ -31,15 +31,22 @@ const commandSelect = document.getElementById("command-select") as HTMLSelectEle
 const commandArgs = document.getElementById("command-args") as HTMLInputElement;
 const runCommandBtn = document.getElementById("run-command") as HTMLButtonElement;
 const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
+const draftPreviewEl = document.getElementById("draft-preview") as HTMLDivElement;
+const draftLabelEl = document.getElementById("draft-label") as HTMLSpanElement;
+const draftTextEl = document.getElementById("draft-text") as HTMLSpanElement;
+const draftDismissBtn = document.getElementById("draft-dismiss") as HTMLButtonElement;
 
 let settings: Settings = await getSettings();
 let api: OpenCodeApi = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
 let connected = false;
 let selectedSessionId: string | null = null;
+let pendingDraft: PendingDraft | null = null;
 let thread: MessageThreadEntry[] = [];
 let commands: Command[] = [];
 let commandsFetchedFromUrl = "";
 let visibleSessionCount = 0;
+/** Provider whose models are shown when no provider is selected in Options ("" = server default). */
+let resolvedDefaultProviderId: string | null = null;
 const messageEls = new Map<string, HTMLDivElement>();
 const partEls = new Map<string, HTMLElement>();
 
@@ -123,16 +130,46 @@ async function runSelectedCommand(): Promise<void> {
   await reloadThread();
 }
 
+/**
+ * Resolve the provider opencode would use by default ("" = server default).
+ * Mirrors opencode's Provider.defaultModel(): config.model, then small_model,
+ * then the selected/default agent's model, then the first available provider.
+ */
+async function resolveDefaultProviderId(): Promise<string | null> {
+  const configResult = await api.getConfig();
+  if (configResult.ok) {
+    const cfg = configResult.value;
+    const agentModel = cfg.agent?.[settings.agent || "build"]?.model;
+    const modelRef = cfg.model ?? cfg.small_model ?? agentModel;
+    if (modelRef) {
+      const providerId = modelRef.split("/")[0];
+      if (providerId) {
+        return providerId;
+      }
+    }
+  }
+  const providersResult = await api.listProviders();
+  const firstProvider = providersResult.ok ? providersResult.value.providers[0] : undefined;
+  if (firstProvider) {
+    return firstProvider.id;
+  }
+  return null;
+}
+
 async function refreshModels(): Promise<void> {
-  const providerId = settings.modelProviderId;
+  let providerId = settings.modelProviderId;
+  if (!providerId) {
+    resolvedDefaultProviderId = await resolveDefaultProviderId();
+    providerId = resolvedDefaultProviderId ?? "";
+  }
   if (!providerId) {
     modelSelect.disabled = true;
     modelSelect.textContent = "";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Set a provider in Options";
-    placeholder.disabled = true;
-    modelSelect.appendChild(placeholder);
+    const hint = document.createElement("option");
+    hint.value = "";
+    hint.textContent = "Set a provider in Options";
+    hint.disabled = true;
+    modelSelect.appendChild(hint);
     modelSelect.value = "";
     return;
   }
@@ -216,6 +253,11 @@ async function refreshSessions(): Promise<void> {
 }
 
 async function selectSession(id: string): Promise<void> {
+  // A staged capture belongs to its own session; switching sessions discards
+  // it so it can't be sent into the wrong thread.
+  if (pendingDraft !== null && id !== pendingDraft.sessionId) {
+    discardDraft();
+  }
   selectedSessionId = id;
   sessionSelect.value = id;
   messageEls.clear();
@@ -412,15 +454,17 @@ function updateStreamedPart(part: TextPart): void {
 
 async function sendPrompt(): Promise<void> {
   const text = promptEl.value.trim();
-  if (!text || selectedSessionId === null || !connected) {
+  const draft = pendingDraft;
+  if ((!text && draft === null) || selectedSessionId === null || !connected) {
     return;
   }
-  promptEl.value = "";
+  const message = draft === null ? text : text ? `${text}\n\n${draft.prompt}` : draft.prompt;
+  const providerId = settings.modelProviderId || resolvedDefaultProviderId;
   const model =
-    settings.modelProviderId && settings.modelId
-      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
+    providerId && settings.modelId
+      ? { providerID: providerId, modelID: settings.modelId }
       : undefined;
-  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text }], {
+  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text: message }], {
     agent: settings.agent || undefined,
     model,
   });
@@ -432,7 +476,14 @@ async function sendPrompt(): Promise<void> {
     scrollToBottom();
     return;
   }
-  // Reload so the user's message appears; the assistant response streams via SSE.
+  // Clear the textarea and consumed draft only on success so a failed send
+  // keeps the capture for retry. Reload so the user's message appears; the
+  // assistant response streams via SSE.
+  promptEl.value = "";
+  if (draft !== null) {
+    pendingDraft = null;
+    renderDraftPreview();
+  }
   await reloadThread();
 }
 
@@ -464,6 +515,9 @@ promptEl.addEventListener("keydown", (event) => {
 });
 sendBtn.addEventListener("click", () => {
   void sendPrompt();
+});
+draftDismissBtn.addEventListener("click", () => {
+  discardDraft();
 });
 abortBtn.addEventListener("click", () => {
   if (selectedSessionId !== null) {
@@ -505,9 +559,14 @@ sessionSelect.addEventListener("change", () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) {
     const previousProviderId = settings.modelProviderId;
+    const previousServerUrl = settings.serverUrl;
     settings = { ...settings, ...(changes.settings.newValue as Settings) };
     api = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
-    if (settings.modelProviderId !== previousProviderId) {
+    const providerChanged = settings.modelProviderId !== previousProviderId;
+    const serverChanged = settings.serverUrl !== previousServerUrl;
+    const needsDefaultResolution = settings.modelProviderId === "" && resolvedDefaultProviderId === null;
+    if (providerChanged || serverChanged || needsDefaultResolution) {
+      resolvedDefaultProviderId = null;
       void refreshModels();
     } else {
       modelSelect.value = settings.modelId;
@@ -519,10 +578,42 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const msg = message as { type?: string; sessionId?: string };
   if (msg.type === "select-session" && msg.sessionId) {
-    void selectSession(msg.sessionId);
-    void clearPendingSessionId();
+    const sessionId = msg.sessionId;
+    void (async () => {
+      await selectSession(sessionId);
+      await clearPendingSessionId();
+      await applyPendingDraft();
+    })();
   }
 });
+
+async function applyPendingDraft(): Promise<void> {
+  const draft = await getPendingDraft();
+  if (draft === null) {
+    return;
+  }
+  await clearPendingDraft();
+  pendingDraft = draft;
+  renderDraftPreview();
+  promptEl.focus();
+  scrollToBottom();
+}
+
+function renderDraftPreview(): void {
+  if (pendingDraft === null) {
+    draftPreviewEl.hidden = true;
+    return;
+  }
+  draftLabelEl.textContent = pendingDraft.label;
+  draftTextEl.textContent = pendingDraft.preview;
+  draftTextEl.title = pendingDraft.preview;
+  draftPreviewEl.hidden = false;
+}
+
+function discardDraft(): void {
+  pendingDraft = null;
+  renderDraftPreview();
+}
 
 async function consumePendingSession(): Promise<void> {
   const pending = await getPendingSessionId();
@@ -532,6 +623,7 @@ async function consumePendingSession(): Promise<void> {
   await clearPendingSessionId();
   await refreshSessions();
   await selectSession(pending);
+  await applyPendingDraft();
 }
 
 void (async () => {
