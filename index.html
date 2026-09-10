@@ -45,6 +45,17 @@
         margin: 0 8px 8px 0;
         vertical-align: middle;
       }
+      pre {
+        background: #f6f8fa;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 10px 12px;
+        overflow-x: auto;
+        font-size: 13px;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
       .muted {
         color: #6e7781;
         font-size: 14px;
@@ -64,6 +75,11 @@
         <a href="https://chromewebstore.google.com/detail/companion-for-opencode/ignkbkhhfpbpakdehejolokfdedcokjm"><img src="https://developer.chrome.com/static/docs/webstore/branding/image/mPGKYBIR2uCP0ApchDXE.png" alt="Available in the Chrome Web Store" height="58" /></a>
         <a href="https://addons.mozilla.org/firefox/addon/companion-for-opencode/"><img src="https://blog.mozilla.org/addons/files/2015/11/get-the-addon.png" alt="Get the Add-on for Firefox" height="58" /></a>
       </p>
+      <p>
+        It talks to an opencode server you run locally on
+        <code>http://localhost:4096</code>:
+      </p>
+      <pre><code>opencode serve --port 4096 --hostname 127.0.0.1</code></pre>
       <ul>
         <li><a href="https://github.com/mmilidoni/opencode-companion">Source code</a></li>
         <li><a href="PRIVACY.html">Privacy policy</a></li>
