@@ -1,12 +1,20 @@
 # Companion for OpenCode
 
-A Manifest V3 Chrome extension that pushes browser context into your local
-[opencode](https://opencode.ai) agent. Right-click or use a shortcut to send
-the selected text or the whole page into an opencode session; the side panel
-lets you browse sessions and watch responses stream in.
+A Manifest V3 browser extension (Chrome and Firefox) that pushes browser
+context into your local [opencode](https://opencode.ai) agent. Right-click or
+use a shortcut to send the selected text or the whole page into an opencode
+session; the side panel lets you browse sessions and watch responses stream in.
 
 Unofficial and open-source — not affiliated with the opencode project.
 Source: [github.com/mmilidoni/opencode-companion](https://github.com/mmilidoni/opencode-companion).
+
+## Install
+
+[<img src="https://developer.chrome.com/static/docs/webstore/branding/image/mPGKYBIR2uCP0ApchDXE.png" alt="Available in the Chrome Web Store" height="58">](https://chromewebstore.google.com/detail/companion-for-opencode/ignkbkhhfpbpakdehejolokfdedcokjm)
+[<img src="https://blog.mozilla.org/addons/files/2015/11/get-the-addon.png" alt="Get the Add-on for Firefox" height="58">](https://addons.mozilla.org/firefox/addon/companion-for-opencode/)
+
+Requires a running [opencode](https://opencode.ai) server. To build from source
+instead, see [Setup](#setup).
 
 ## Features
 
