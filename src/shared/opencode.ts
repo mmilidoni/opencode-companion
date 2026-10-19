@@ -1,58 +1,31 @@
-import { createOpencodeClient } from "@opencode-ai/sdk/client";
-import type { Agent, Command, Message, Part, Session, TextPartInput } from "@opencode-ai/sdk/client";
+import { createV1Api } from "./opencode-v1.js";
+import { createV2Api } from "./opencode-v2.js";
+import type { ConnectionResult, OpenCodeApi, ServerFlavor, ServerApi } from "./facade.js";
 
-export type OpenCodeError =
-  | { kind: "unreachable"; detail: string }
-  | { kind: "unauthorized"; passwordProvided: boolean }
-  | { kind: "server"; status: number; detail: string }
-  | { kind: "tui"; detail: string };
+export type { OpenCodeError, Result } from "./result.js";
+export type {
+  ConnectionResult,
+  FacadeAgent,
+  FacadeCommand,
+  FacadeMessage,
+  FacadeModelRef,
+  FacadePart,
+  FacadeProvider,
+  FacadeSession,
+  FacadeStreamEvent,
+  HealthInfo,
+  MessageRole,
+  OpenCodeApi,
+  PromptOptions,
+  ServerFlavor,
+  ServerApi,
+} from "./facade.js";
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: OpenCodeError };
-
-export interface HealthInfo {
-  healthy: boolean;
-  version: string;
-  /** True when the server enforces basic auth (anonymous health probe got 401). */
+interface ProbeResult {
+  status?: number;
+  body?: unknown;
   requiresAuth: boolean;
-  /** True when the caller supplied a password in settings. */
-  passwordProvided: boolean;
-}
-
-export type ConnectionResult = Result<HealthInfo>;
-
-export type MessageThreadEntry = { info: Message; parts: Part[] };
-
-/** Minimal view of the merged server config (GET /config) needed to resolve the default provider/model. */
-export interface OpenCodeConfig {
-  /** Default model in "provider/model" form. */
-  model?: string;
-  /** Small model (title generation etc.) in "provider/model" form. */
-  small_model?: string;
-  /** Per-agent config; each entry may override the model. */
-  agent?: Record<string, { model?: string } | undefined>;
-}
-
-export interface OpenCodeApi {
-  health(): Promise<Result<HealthInfo>>;
-  createSession(title: string): Promise<Result<string>>;
-  promptAsync(
-    sessionId: string,
-    parts: TextPartInput[],
-    opts?: { agent?: string; model?: { providerID: string; modelID: string } },
-  ): Promise<Result<void>>;
-  listSessions(): Promise<Result<Session[]>>;
-  listMessages(sessionId: string): Promise<Result<MessageThreadEntry[]>>;
-  abort(sessionId: string): Promise<Result<void>>;
-  deleteSession(sessionId: string): Promise<Result<void>>;
-  listCommands(): Promise<Result<Command[]>>;
-  runCommand(sessionId: string, command: string, args: string): Promise<Result<void>>;
-  listAgents(): Promise<Result<Agent[]>>;
-  listProviders(): Promise<Result<{ providers: { id: string; name: string; models: Record<string, unknown> }[] }>>;
-  getConfig(): Promise<Result<OpenCodeConfig>>;
-  appendPromptTui(text: string): Promise<Result<void>>;
-  submitPromptTui(): Promise<Result<void>>;
-  /** `/event` SSE bus; auto-reconnects with exponential backoff. */
-  eventSubscribe(): Promise<AsyncIterable<unknown>>;
+  networkError: boolean;
 }
 
 function toBase64Utf8(value: string): string {
@@ -64,18 +37,18 @@ function toBase64Utf8(value: string): string {
   return btoa(binary);
 }
 
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-class TuiError extends Error {}
+/** v2 servers answer GET /api/info with a ServerInfo object carrying `version`. */
+function isServerInfo(body: unknown): body is { version: string } {
+  return isRecord(body) && typeof body.version === "string";
+}
 
-function statusOf(err: unknown): number | undefined {
-  if (err instanceof Error && err.cause !== undefined && typeof err.cause === "object") {
-    const status = (err.cause as { status?: unknown }).status;
-    if (typeof status === "number") return status;
-  }
-  return undefined;
+/** v1 servers answer GET /global/health with `{ healthy: boolean, version }`. */
+function isHealthBody(body: unknown): body is { healthy: boolean; version?: string } {
+  return isRecord(body) && typeof body.healthy === "boolean";
 }
 
 export function createOpenCodeApi(serverUrl: string, serverPassword: string): OpenCodeApi {
@@ -83,82 +56,13 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
   const authorization = passwordProvided
     ? `Basic ${toBase64Utf8(`opencode:${serverPassword}`)}`
     : undefined;
+  const baseUrl = serverUrl.replace(/\/+$/, "");
 
-  const fetchImpl: typeof fetch = async (input, init) => {
-    const headers = new Headers(init?.headers);
-    if (authorization) {
-      headers.set("Authorization", authorization);
-    }
-    return fetch(input, { ...init, headers });
-  };
+  const v1 = createV1Api(baseUrl, passwordProvided, authorization);
+  const v2 = createV2Api(baseUrl, passwordProvided, authorization);
+  let resolved: ServerApi | undefined;
 
-  async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
-    try {
-      return { ok: true, value: await fn() };
-    } catch (err) {
-      if (err instanceof TuiError) {
-        return { ok: false, error: { kind: "tui", detail: err.message } };
-      }
-      const status = statusOf(err);
-      if (status === 401) {
-        return { ok: false, error: { kind: "unauthorized", passwordProvided } };
-      }
-      if (status !== undefined) {
-        return { ok: false, error: { kind: "server", status, detail: messageOf(err) } };
-      }
-      return { ok: false, error: { kind: "unreachable", detail: messageOf(err) } };
-    }
-  }
-
-  // The generated SDK has no typed health() in 1.18.27 (Global only exposes
-  // event()); /global/health is fetched directly. The check first probes
-  // WITHOUT credentials so the popup can distinguish "server requires a
-  // password" from "server ignores passwords entirely".
-  async function health(): Promise<Result<HealthInfo>> {
-    const probe = await safeFetch(`${serverUrl}/global/health`);
-    if (probe === undefined) {
-      return { ok: false, error: { kind: "unreachable", detail: "Failed to fetch" } };
-    }
-    if (probe.status === 401) {
-      const res = await safeFetch(`${serverUrl}/global/health`, authorization);
-      if (res === undefined) {
-        return { ok: false, error: { kind: "unreachable", detail: "Failed to fetch" } };
-      }
-      if (!res.ok) {
-        if (res.status === 401) {
-          return { ok: false, error: { kind: "unauthorized", passwordProvided } };
-        }
-        return {
-          ok: false,
-          error: { kind: "server", status: res.status, detail: `health check failed (${res.status})` },
-        };
-      }
-      return toHealthResult(res, { requiresAuth: true });
-    }
-    if (!probe.ok) {
-      return {
-        ok: false,
-        error: { kind: "server", status: probe.status, detail: `health check failed (${probe.status})` },
-      };
-    }
-    return toHealthResult(probe, { requiresAuth: false });
-  }
-
-  async function toHealthResult(
-    res: Response,
-    extra: Pick<HealthInfo, "requiresAuth">,
-  ): Promise<Result<HealthInfo>> {
-    const info = (await res.json()) as HealthInfo;
-    if (!info.healthy) {
-      return {
-        ok: false,
-        error: { kind: "server", status: res.status, detail: "server reported unhealthy" },
-      };
-    }
-    return { ok: true, value: { ...info, ...extra, passwordProvided } };
-  }
-
-  async function safeFetch(url: string, authorizationHeader?: string): Promise<Response | undefined> {
+  async function tryFetch(url: string, authorizationHeader?: string): Promise<Response | undefined> {
     try {
       const headers = new Headers();
       if (authorizationHeader) {
@@ -170,107 +74,137 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
     }
   }
 
-  const client = createOpencodeClient({ baseUrl: serverUrl, fetch: fetchImpl });
+  async function readJson(res: Response): Promise<unknown> {
+    try {
+      return (await res.json()) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Probes a path anonymously, then retries with credentials on 401 so the
+  // popup can tell "server requires a password" from "server ignores passwords".
+  async function probe(path: string): Promise<ProbeResult> {
+    const url = `${baseUrl}${path}`;
+    const anonymous = await tryFetch(url);
+    if (anonymous === undefined) {
+      return { requiresAuth: false, networkError: true };
+    }
+    if (anonymous.status === 401 || anonymous.status === 403) {
+      if (!authorization) {
+        return { status: anonymous.status, requiresAuth: true, networkError: false };
+      }
+      const authenticated = await tryFetch(url, authorization);
+      if (authenticated === undefined) {
+        return { requiresAuth: true, networkError: true };
+      }
+      return {
+        status: authenticated.status,
+        body: await readJson(authenticated),
+        requiresAuth: true,
+        networkError: false,
+      };
+    }
+    return {
+      status: anonymous.status,
+      body: await readJson(anonymous),
+      requiresAuth: false,
+      networkError: false,
+    };
+  }
+
+  // Distinguishes a v2 server (rewritten /api/* HTTP API) from a v1 server,
+  // validating by JSON shape because a v2 server answers the old paths with the
+  // SPA's HTML at 200 rather than a 404.
+  async function health(): Promise<ConnectionResult> {
+    const info = await probe("/api/info");
+    if (isServerInfo(info.body)) {
+      resolved = v2;
+      return {
+        ok: true,
+        value: {
+          healthy: true,
+          version: info.body.version,
+          flavor: "v2" satisfies ServerFlavor,
+          requiresAuth: info.requiresAuth,
+          passwordProvided,
+        },
+      };
+    }
+
+    const legacy = await probe("/global/health");
+    if (isHealthBody(legacy.body)) {
+      resolved = v1;
+      return {
+        ok: true,
+        value: {
+          healthy: true,
+          version: legacy.body.version ?? "",
+          flavor: "v1" satisfies ServerFlavor,
+          requiresAuth: legacy.requiresAuth,
+          passwordProvided,
+        },
+      };
+    }
+
+    if (info.networkError && legacy.networkError) {
+      return { ok: false, error: { kind: "unreachable", detail: "Failed to fetch" } };
+    }
+    if (info.status === 401 || info.status === 403 || legacy.status === 401 || legacy.status === 403) {
+      return { ok: false, error: { kind: "unauthorized", passwordProvided } };
+    }
+    const status = info.networkError ? legacy.status : info.status;
+    if (status !== undefined) {
+      return { ok: false, error: { kind: "server", status, detail: `health check failed (${status})` } };
+    }
+    return { ok: false, error: { kind: "unreachable", detail: "Failed to fetch" } };
+  }
+
+  async function resolveImpl(): Promise<ServerApi> {
+    if (resolved) {
+      return resolved;
+    }
+    await health();
+    return resolved ?? v1;
+  }
 
   return {
     health,
     async createSession(title) {
-      return run(async () => {
-        const session = await client.session.create({ body: { title }, throwOnError: true });
-        return session.data.id;
-      });
+      return (await resolveImpl()).createSession(title);
     },
-    async promptAsync(sessionId, parts, opts) {
-      return run(async () => {
-        const body: { parts: TextPartInput[]; agent?: string; model?: { providerID: string; modelID: string } } = { parts };
-        if (opts?.agent) {
-          body.agent = opts.agent;
-        }
-        if (opts?.model?.providerID && opts?.model?.modelID) {
-          body.model = { providerID: opts.model.providerID, modelID: opts.model.modelID };
-        }
-        await client.session.promptAsync({ path: { id: sessionId }, body, throwOnError: true });
-      });
+    async prompt(sessionId, text, opts) {
+      return (await resolveImpl()).prompt(sessionId, text, opts);
     },
     async listSessions() {
-      return run(async () => {
-        const sessions = await client.session.list({ throwOnError: true });
-        return sessions.data;
-      });
+      return (await resolveImpl()).listSessions();
     },
     async listMessages(sessionId) {
-      return run(async () => {
-        const thread = await client.session.messages({ path: { id: sessionId }, throwOnError: true });
-        return thread.data;
-      });
+      return (await resolveImpl()).listMessages(sessionId);
     },
     async abort(sessionId) {
-      return run(async () => {
-        await client.session.abort({ path: { id: sessionId }, throwOnError: true });
-      });
+      return (await resolveImpl()).abort(sessionId);
     },
     async deleteSession(sessionId) {
-      return run(async () => {
-        await client.session.delete({ path: { id: sessionId }, throwOnError: true });
-      });
+      return (await resolveImpl()).deleteSession(sessionId);
     },
-async listCommands() {
-      return run(async () => {
-        const commands = await client.command.list({ throwOnError: true });
-        return commands.data;
-      });
+    async listCommands() {
+      return (await resolveImpl()).listCommands();
     },
     async runCommand(sessionId, command, args) {
-      return run(async () => {
-        await client.session.command({
-          path: { id: sessionId },
-          body: { command, arguments: args },
-          throwOnError: true,
-        });
-      });
+      return (await resolveImpl()).runCommand(sessionId, command, args);
     },
     async listAgents() {
-      return run(async () => {
-        const agents = await client.app.agents({ throwOnError: true });
-        return agents.data;
-      });
+      return (await resolveImpl()).listAgents();
     },
     async listProviders() {
-      return run(async () => {
-        const providers = await client.config.providers({ throwOnError: true });
-        return providers.data;
-      });
+      return (await resolveImpl()).listProviders();
     },
-    async getConfig() {
-      return run(async () => {
-        const config = await client.config.get({ throwOnError: true });
-        return config.data;
-      });
-    },
-    async appendPromptTui(text) {
-      return run(async () => {
-        const ok = await client.tui.appendPrompt({ body: { text }, throwOnError: true });
-        if (ok.data === false) {
-          throw new TuiError("The opencode TUI rejected the prompt — is a TUI attached to this server?");
-        }
-      });
-    },
-    async submitPromptTui() {
-      return run(async () => {
-        const ok = await client.tui.submitPrompt({ throwOnError: true });
-        if (ok.data === false) {
-          throw new TuiError("The opencode TUI rejected the submit — is a TUI attached to this server?");
-        }
-      });
+    async defaultModel(agentId) {
+      return (await resolveImpl()).defaultModel(agentId);
     },
     async eventSubscribe() {
-      // The generated SSE client calls global fetch directly and ignores a
-      // custom fetch, so the basic-auth header must ride on the request
-      // headers instead of the fetch wrapper.
-      const result = await client.event.subscribe({
-        headers: authorization ? { Authorization: authorization } : undefined,
-      } as never);
-      return result.stream as AsyncIterable<unknown>;
+      return (await resolveImpl()).eventSubscribe();
     },
   };
 }

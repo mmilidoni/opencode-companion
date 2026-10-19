@@ -1,10 +1,11 @@
-export type DeliveryMode = "headless" | "tui" | "draft";
+export type DeliveryMode = "headless" | "draft";
+
+export const DELIVERY_MODES: readonly DeliveryMode[] = ["headless", "draft"];
 
 export interface Settings {
   serverUrl: string;
   serverPassword: string;
   deliveryMode: DeliveryMode;
-  autoSubmitTui: boolean;
   pageCharLimit: number;
   autoOpenPanel: boolean;
   /** "" = server default agent. */
@@ -19,7 +20,6 @@ export const DEFAULT_SETTINGS: Settings = {
   serverUrl: "http://localhost:4096",
   serverPassword: "",
   deliveryMode: "draft",
-  autoSubmitTui: false,
   pageCharLimit: 20_000,
   autoOpenPanel: true,
   agent: "",
@@ -32,7 +32,13 @@ const SETTINGS_KEY = "settings";
 export async function getSettings(): Promise<Settings> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
   const raw = stored[SETTINGS_KEY] as Partial<Settings> | undefined;
-  return { ...DEFAULT_SETTINGS, ...raw };
+  const merged: Settings = { ...DEFAULT_SETTINGS, ...raw };
+  // Installs from before the v2 migration stored deliveryMode "tui", which no
+  // longer exists — fall back to the default rather than carrying a dead value.
+  if (!DELIVERY_MODES.includes(merged.deliveryMode)) {
+    merged.deliveryMode = DEFAULT_SETTINGS.deliveryMode;
+  }
+  return merged;
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
