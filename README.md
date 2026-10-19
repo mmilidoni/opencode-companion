@@ -32,9 +32,11 @@ To build from source instead, see [Setup](#setup).
   issue context (owner/repo/number) to the prompt.
 - **Two delivery modes**:
   - *New opencode session* (default): creates a session on the server and
-    sends the prompt asynchronously.
-  - *Open TUI prompt*: appends the prompt into an opencode TUI running on the
-    server port (append-only by default; auto-submit is opt-in).
+    sends the prompt.
+  - *Draft in side panel*: stages the prompt in the panel for review — nothing
+    is submitted until you press **Send**.
+- **Works with opencode v1 and v2** — the extension detects which HTTP API the
+  server speaks and adapts (v2's `/api/*` surface or v1's legacy one).
 - **Side panel** — session list, streaming chat over the server's `/event`
   SSE bus, abort, new-session creation, slash commands, and session deletion
   (current or all extension-created sessions). Auto-opens and selects the new
@@ -98,8 +100,13 @@ of a side panel; everything else behaves the same.
 Open the popup: set the server URL (and password, if the server requires one),
 and hit **Save**. The status dot shows whether the server is reachable and
 whether it requires a password. Delivery mode, auto-open behaviour, and the
-other advanced options (page character limit, TUI auto-submit, agent & model
-defaults) live in the options page (right-click the extension → Options).
+other advanced options (page character limit, agent & model defaults) live in
+the options page (right-click the extension → Options).
+
+opencode v1 and v2 are both supported: on v1 the server reads its password from
+`OPENCODE_SERVER_PASSWORD`; on v2 `opencode serve` always requires basic auth
+(username `opencode`) and prints a generated password at startup unless
+`OPENCODE_SERVER_PASSWORD` is set.
 
 ## Usage
 
@@ -110,19 +117,6 @@ defaults) live in the options page (right-click the extension → Options).
 - Click the extension popup → **Open side panel** to browse sessions and chat
 - When *Auto-open side panel after sending* is on, sending from a page opens
   the panel and selects the new session automatically
-
-## TUI mode
-
-Run the TUI with a fixed port and point the extension at it:
-
-```sh
-opencode --port 4096
-```
-
-Then set *Deliver to* → *Open TUI prompt*. Sends append to the TUI's prompt
-box; nothing is submitted unless you press Enter in the TUI (or enable
-auto-submit in options). Note that `opencode serve` and a TUI cannot share a
-port.
 
 ## Permissions
 

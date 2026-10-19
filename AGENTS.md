@@ -41,8 +41,8 @@ To cut a release, do all of these, in order — none is optional:
 
 1. **Bump the version** in three files so they stay aligned: `package.json`
    (`version`), `manifest.json` (`version`), and `package-lock.json` (the root
-   `version` **and** `packages[""].version`). 0.x SemVer: minor for a feature,
-   patch for a fix.
+   `version` **and** `packages[""].version`). SemVer: major for a breaking
+   change, minor for a feature, patch for a fix.
 2. **Update `CHANGELOG.md`** — Keep-a-Changelog style (`### Added` / `### Changed`
    / `### Fixed`) under a new `## [x.y.z] - YYYY-MM-DD` heading at the top.
 3. **Refresh the store screenshots.** New captures land in `images/` (any size);
@@ -80,10 +80,42 @@ To cut a release, do all of these, in order — none is optional:
   pass the `Authorization` header via the `subscribe({ headers })` option
   (see `shared/opencode.ts`).
 - **`session.promptAsync` exists** (maps to `POST /session/{id}/prompt_async`,
-  204). All SDK calls in the facade use per-call `throwOnError: true` for
-  honest return types; errors are normalized in `run()` to
-  `unreachable | unauthorized | server | tui` kinds with no internal detail
-  leakage. Never surface raw SDK errors in user-facing text.
+  204) — but only on v1. The facade no longer calls the SDK for v2 (see the
+  v1/v2 section below). Errors are normalized in the v1 impl to
+  `unreachable | unauthorized | server` kinds with no internal detail leakage.
+  Never surface raw SDK errors in user-facing text.
+
+## opencode v1 / v2 compatibility (added 2026-10-19)
+
+- The extension supports **both** server generations. `shared/opencode.ts`
+  probes `GET /api/info` (JSON with a string `version` ⇒ v2), then
+  `GET /global/health` (JSON with a boolean `healthy` ⇒ v1) — by JSON *shape*,
+  because a v2 server answers the legacy paths with the web UI's HTML at
+  status 200. The resolved impl is cached; every call delegates to it.
+- Consumers never import the SDK or talk HTTP. They use the normalized facade
+  in `shared/facade.ts` (`FacadeSession`, `FacadeMessage`, `FacadePart`,
+  `FacadeCommand`, `FacadeAgent`, `FacadeProvider`, `FacadeStreamEvent`, …).
+  `shared/opencode-v1.ts` drives the pinned SDK; `shared/opencode-v2.ts` is a
+  hand-written `/api/*` client with its own SSE parser.
+- v2 wraps responses (`{data}`, `{location,data}`, `{data,cursor}`) — unwrapped
+  in the v2 impl. v2 has no merged-config endpoint, so the default model comes
+  from `GET /api/model/default`, falling back to the first provider.
+- v2 SSE is parsed from `GET /api/event` with the **server's** event names
+  (`session.text.started|delta|ended`, `session.reasoning.*`, `session.step.*`,
+  `session.tool.*`, `session.usage.updated`), accumulated into `part` events; a
+  debounced thread reload is the safety net.
+- **Never use the SDK's `v2` client**: it lacks delete/command, and its event
+  names (`session.next.text.delta`) differ from what server 2.0.32 emits.
+- `GET /api/session/:id/message` returns the thread **newest-first** and caps it
+  at 50 messages; `shared/opencode-v2.ts` reverses/orders it chronologically
+  before it reaches the panel.
+- **A failed run returns an `assistant` message with `content: []` and an `error`
+  object** (plus an `idle` message with `outcome: "failed"`). Never map a
+  part-less assistant message to `null` - carry the error on the facade message
+  (`FacadeMessage.error`) and render it, or a dead run looks like a silent panel.
+- The panel's `/api/event` iterator is bound to the URL/password it was opened
+  with - after changing either, `subscribeToEvents()` must be called again
+  (the token in `sidepanel.ts` retires the old loop).
 
 ## Service worker rules (MV3 gotchas)
 
@@ -116,14 +148,14 @@ To cut a release, do all of these, in order — none is optional:
 
 ## Storage & data model
 
-- Settings (`serverUrl`, `serverPassword`, `deliveryMode`, `autoSubmitTui`,
-  `pageCharLimit`, `autoOpenPanel`, `agent`, `modelProviderId`, `modelId`) live
-  in `chrome.storage.local` only — never `.sync`/`.session`. Password is never
+- Settings (`serverUrl`, `serverPassword`, `deliveryMode`, `pageCharLimit`,
+  `autoOpenPanel`, `agent`, `modelProviderId`, `modelId`) live in
+  `chrome.storage.local` only — never `.sync`/`.session`. Password is never
   logged.
-- `deliveryMode` is one of `headless` (create session + submit), `tui`
-  (append to a TUI prompt), or `draft` — the **default** — which stages the
-  capture in the panel (`pendingDraft` in storage) and submits nothing until
-  the user sends from the panel. README documents only headless/tui; trust
+- `deliveryMode` is one of `headless` (create session + submit) or `draft` —
+  the **default** — which stages the capture in the panel (`pendingDraft` in
+  storage) and submits nothing until the user sends from the panel. A stored
+  legacy `tui` value is coerced back to the default by `getSettings()`. Trust
   `DEFAULT_SETTINGS` in `shared/storage.ts`, which is the source of truth.
 - **The side panel shows only sessions the extension created.** Session IDs
   are recorded in `extensionSessionIds` (capped at 1000) via
@@ -136,8 +168,11 @@ To cut a release, do all of these, in order — none is optional:
 ## Layout
 
 - `src/background/sw.ts` — context menus, command handler, send pipeline
-  (selection/page → `composePrompt` → headless session, TUI append, or draft).
-- `src/shared/` — `opencode.ts` (SDK facade + auth), `storage.ts`,
+  (selection/page → `composePrompt` → headless session or draft).
+- `src/shared/` — `opencode.ts` (v1/v2 detection + facade factory), `facade.ts`
+  (version-agnostic API types), `result.ts` (`Result<T>`, `OpenCodeError`),
+  `opencode-v1.ts` (pinned SDK impl), `opencode-v2.ts` (hand-written `/api/*`
+  client + SSE parser), `storage.ts`,
   `platform.ts` (Chrome `sidePanel` ↔ Firefox `sidebarAction` shim),
   `prompt.ts` (untrusted-content delimiters + guard note; captured web content
   is data, never instructions), `types.ts`.
@@ -147,9 +182,10 @@ To cut a release, do all of these, in order — none is optional:
   text); user parts stay plain text. SSE text parts are keyed
   `${messageID}:${partID}` in `partEls`.
 - `src/popup/` — quick config (URL, password, delivery mode, auto-open panel).
-- `src/options/` — advanced config (`pageCharLimit`, `autoSubmitTui`) plus
-  agent / provider / model pickers loaded from the server
-  (`GET /app/agents`, `GET /config/providers`). Both pages write the same
+- `src/options/` — advanced config (`pageCharLimit`) plus
+  agent / provider / model pickers loaded from the server (normalized by the
+  facade — v1 `app.agents()`/`config.providers()`, v2 `/api/agent`,
+  `/api/provider` + `/api/model`). Both pages write the same
   settings key; `storage.onChanged` refreshes SW and panel caches.
 - `icons/` — committed PNGs; the generator was a throwaway PowerShell
   System.Drawing script (not checked in) — re-create it if icons must change.
@@ -159,5 +195,7 @@ To cut a release, do all of these, in order — none is optional:
 - The dev machine has a global `OPENCODE_SERVER_PASSWORD` set, so freshly
   started `opencode serve` instances require basic auth (username `opencode`).
   The extension handles both auth and no-auth servers via the health probe.
-- `opencode serve` and an opencode TUI cannot share a port; TUI mode requires
-  `opencode --port <n>` (not `serve`) and the extension URL pointed at it.
+- **opencode v2** always requires basic auth and, with no
+  `OPENCODE_SERVER_PASSWORD` set, prints a generated password as
+  `server password <pw>` at startup — that printed value is the one to enter in
+  extension settings.

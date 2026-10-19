@@ -201,6 +201,17 @@ body {
   background: #fff5f5;
 }
 
+.part-error {
+  margin-top: 6px;
+  color: #cf222e;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 8px;
+  border: 1px solid #ffebe9;
+  border-radius: 8px;
+  background: #fff5f5;
+}
+
 /* Composer */
 
 .composer {

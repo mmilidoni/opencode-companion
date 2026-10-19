@@ -1,19 +1,13 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
-import type { MessageThreadEntry, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
+import type { FacadeCommand, FacadeMessage, FacadeStreamEvent, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
 import { getSettings, saveSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId, getPendingDraft, clearPendingDraft } from "../shared/storage.js";
 import type { PendingDraft, Settings } from "../shared/storage.js";
-import type { TextPart } from "@opencode-ai/sdk/client";
-import type { Command } from "@opencode-ai/sdk/client";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
 const HEALTH_POLL_MS = 5_000;
 const PENDING_POLL_MS = 1_500;
-
-interface StreamEvent {
-  type?: string;
-  properties?: Record<string, unknown>;
-}
+const RELOAD_DEBOUNCE_MS = 400;
 
 const connDot = document.getElementById("conn-dot") as HTMLSpanElement;
 const connText = document.getElementById("conn-text") as HTMLSpanElement;
@@ -41,14 +35,18 @@ let api: OpenCodeApi = createOpenCodeApi(settings.serverUrl, settings.serverPass
 let connected = false;
 let selectedSessionId: string | null = null;
 let pendingDraft: PendingDraft | null = null;
-let thread: MessageThreadEntry[] = [];
-let commands: Command[] = [];
+let thread: FacadeMessage[] = [];
+let commands: FacadeCommand[] = [];
 let commandsFetchedFromUrl = "";
 let visibleSessionCount = 0;
 /** Provider whose models are shown when no provider is selected in Options ("" = server default). */
 let resolvedDefaultProviderId: string | null = null;
 const messageEls = new Map<string, HTMLDivElement>();
 const partEls = new Map<string, HTMLElement>();
+/** Assistant messages being rendered from the live stream (not a thread reload). */
+const streamedMessages = new Set<string>();
+/** Bumped on every event subscription so a superseded loop stops consuming. */
+let eventSubscriptionToken = 0;
 
 function describeError(error: OpenCodeError): string {
   switch (error.kind) {
@@ -58,8 +56,6 @@ function describeError(error: OpenCodeError): string {
       return "Could not reach the opencode server — is it running?";
     case "server":
       return `Server error (${error.status}).`;
-    case "tui":
-      return error.detail;
   }
 }
 
@@ -101,7 +97,6 @@ async function refreshCommands(): Promise<void> {
     const option = document.createElement("option");
     option.value = cmd.name;
     option.textContent = `/${cmd.name}${cmd.description ? ` — ${cmd.description}` : ""}`;
-    option.title = cmd.template;
     commandSelect.appendChild(option);
   }
   commandSelect.value = selected;
@@ -132,24 +127,16 @@ async function runSelectedCommand(): Promise<void> {
 
 /**
  * Resolve the provider opencode would use by default ("" = server default).
- * Mirrors opencode's Provider.defaultModel(): config.model, then small_model,
- * then the selected/default agent's model, then the first available provider.
+ * The server reports its own default model; when it can't, fall back to the
+ * first provider it advertises.
  */
 async function resolveDefaultProviderId(): Promise<string | null> {
-  const configResult = await api.getConfig();
-  if (configResult.ok) {
-    const cfg = configResult.value;
-    const agentModel = cfg.agent?.[settings.agent || "build"]?.model;
-    const modelRef = cfg.model ?? cfg.small_model ?? agentModel;
-    if (modelRef) {
-      const providerId = modelRef.split("/")[0];
-      if (providerId) {
-        return providerId;
-      }
-    }
+  const modelResult = await api.defaultModel(settings.agent);
+  if (modelResult.ok && modelResult.value) {
+    return modelResult.value.providerID;
   }
   const providersResult = await api.listProviders();
-  const firstProvider = providersResult.ok ? providersResult.value.providers[0] : undefined;
+  const firstProvider = providersResult.ok ? providersResult.value[0] : undefined;
   if (firstProvider) {
     return firstProvider.id;
   }
@@ -188,8 +175,8 @@ async function refreshModels(): Promise<void> {
   }
   const result = await api.listProviders();
   if (result.ok) {
-    const provider = result.value.providers.find((p) => p.id === providerId);
-    const modelIds = Object.keys(provider?.models ?? {});
+    const provider = result.value.find((p) => p.id === providerId);
+    const modelIds = provider?.models ?? [];
     if (modelIds.length > 0) {
       modelSelect.textContent = "";
       const livePlaceholder = document.createElement("option");
@@ -228,7 +215,7 @@ async function refreshSessions(): Promise<void> {
   const extensionIds = new Set(await getExtensionSessionIds());
   const sorted = [...result.value]
     .filter((session) => extensionIds.has(session.id))
-    .sort((a, b) => b.time.updated - a.time.updated);
+    .sort((a, b) => b.updated - a.updated);
   visibleSessionCount = sorted.length;
   if (sorted.length === 0) {
     const placeholder = document.createElement("option");
@@ -351,6 +338,7 @@ function renderThread(): void {
   messagesEl.textContent = "";
   messageEls.clear();
   partEls.clear();
+  streamedMessages.clear();
   if (selectedSessionId === null || thread.length === 0) {
     emptyEl.hidden = false;
     messagesEl.hidden = true;
@@ -368,17 +356,17 @@ function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text, { async: false }));
 }
 
-function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
+function renderMessageEntry(entry: FacadeMessage): HTMLDivElement {
   const bubble = document.createElement("div");
-  bubble.className = `bubble ${entry.info.role}`;
+  bubble.className = `bubble ${entry.role}`;
 
   const label = document.createElement("div");
   label.className = "role";
-  label.textContent = entry.info.role === "user" ? "You" : "opencode";
+  label.textContent = entry.role === "user" ? "You" : entry.role === "system" ? "system" : "opencode";
 
   const body = document.createElement("div");
   body.className = "body";
-  const isAssistant = entry.info.role === "assistant";
+  const isAssistant = entry.role === "assistant";
   for (const part of entry.parts) {
     if (part.type === "text" && !part.ignored) {
       const el = document.createElement(isAssistant ? "div" : "p");
@@ -392,35 +380,55 @@ function renderMessageEntry(entry: MessageThreadEntry): HTMLDivElement {
       partEls.set(`${part.messageID}:${part.id}`, el);
     }
   }
+  if (entry.error !== undefined) {
+    const el = document.createElement("div");
+    el.className = "part-text part-error";
+    el.textContent = entry.error;
+    body.appendChild(el);
+  }
 
   bubble.append(label, body);
-  messageEls.set(entry.info.id, bubble);
+  messageEls.set(entry.id, bubble);
   return bubble;
 }
 
-function handleStreamEvent(raw: unknown): void {
-  const ev = raw as StreamEvent;
-  switch (ev.type) {
-    case "session.created":
-    case "session.deleted":
+let reloadTimer: number | undefined;
+
+/** Coalesce the reload storms a busy agent produces while it streams. */
+function scheduleThreadReload(sessionId: string): void {
+  if (sessionId !== selectedSessionId || reloadTimer !== undefined) {
+    return;
+  }
+  reloadTimer = window.setTimeout(() => {
+    reloadTimer = undefined;
+    void reloadThread();
+  }, RELOAD_DEBOUNCE_MS);
+}
+
+function handleStreamEvent(event: FacadeStreamEvent): void {
+  switch (event.kind) {
+    case "sessions-changed":
       void refreshSessions();
-      break;
-    case "message.part.updated": {
-      const part = ev.properties?.part as Partial<TextPart> | undefined;
-      if (part && part.sessionID === selectedSessionId && part.type === "text" && part.messageID && part.id) {
-        updateStreamedPart(part as TextPart);
+      return;
+    case "part":
+      if (event.sessionId === selectedSessionId) {
+        updateStreamedPart(event.messageId, event.partId, event.text);
       }
-      break;
-    }
+      return;
+    case "reload":
+      scheduleThreadReload(event.sessionId);
+      return;
+    case "status":
+      return;
   }
 }
 
-function updateStreamedPart(part: TextPart): void {
+function updateStreamedPart(messageId: string, partId: string, text: string): void {
   if (messagesEl.hidden) {
     emptyEl.hidden = true;
     messagesEl.hidden = false;
   }
-  let bubble = messageEls.get(part.messageID);
+  let bubble = messageEls.get(messageId);
   if (!bubble) {
     bubble = document.createElement("div");
     bubble.className = "bubble assistant";
@@ -434,13 +442,28 @@ function updateStreamedPart(part: TextPart): void {
 
     bubble.append(label, body);
     messagesEl.appendChild(bubble);
-    messageEls.set(part.messageID, bubble);
+    messageEls.set(messageId, bubble);
   }
   const body = bubble.querySelector<HTMLDivElement>(".body");
   if (!body) {
     return;
   }
-  const key = `${part.messageID}:${part.id}`;
+  // The bubble may have been rendered from a thread reload whose text parts use
+  // different keys than the live stream; drop those so the streamed text
+  // replaces them instead of appearing twice.
+  if (!streamedMessages.has(messageId)) {
+    streamedMessages.add(messageId);
+    for (const child of Array.from(body.querySelectorAll(".part-text"))) {
+      child.remove();
+    }
+    for (const [key, el] of Array.from(partEls.entries())) {
+      if (key.startsWith(`${messageId}:`)) {
+        el.remove();
+        partEls.delete(key);
+      }
+    }
+  }
+  const key = `${messageId}:${partId}`;
   let el = partEls.get(key);
   if (!el) {
     el = document.createElement("div");
@@ -448,7 +471,7 @@ function updateStreamedPart(part: TextPart): void {
     body.appendChild(el);
     partEls.set(key, el);
   }
-  el.innerHTML = renderMarkdown(part.text);
+  el.innerHTML = renderMarkdown(text);
   scrollToBottom();
 }
 
@@ -464,7 +487,7 @@ async function sendPrompt(): Promise<void> {
     providerId && settings.modelId
       ? { providerID: providerId, modelID: settings.modelId }
       : undefined;
-  const result = await api.promptAsync(selectedSessionId, [{ type: "text", text: message }], {
+  const result = await api.prompt(selectedSessionId, message, {
     agent: settings.agent || undefined,
     model,
   });
@@ -501,9 +524,18 @@ async function reloadThread(): Promise<void> {
 }
 
 async function subscribeToEvents(): Promise<void> {
-  const stream = await api.eventSubscribe();
-  for await (const raw of stream) {
-    handleStreamEvent(raw);
+  // Re-subscribing (settings changed) must retire the running loop: its iterator
+  // is bound to the previous server URL and password, so it would stay silent.
+  const token = ++eventSubscriptionToken;
+  const result = await api.eventSubscribe();
+  if (!result.ok || token !== eventSubscriptionToken) {
+    return;
+  }
+  for await (const event of result.value) {
+    if (token !== eventSubscriptionToken) {
+      return;
+    }
+    handleStreamEvent(event);
   }
 }
 
@@ -560,16 +592,22 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) {
     const previousProviderId = settings.modelProviderId;
     const previousServerUrl = settings.serverUrl;
+    const previousServerPassword = settings.serverPassword;
     settings = { ...settings, ...(changes.settings.newValue as Settings) };
     api = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
     const providerChanged = settings.modelProviderId !== previousProviderId;
-    const serverChanged = settings.serverUrl !== previousServerUrl;
+    const serverChanged =
+      settings.serverUrl !== previousServerUrl || settings.serverPassword !== previousServerPassword;
     const needsDefaultResolution = settings.modelProviderId === "" && resolvedDefaultProviderId === null;
     if (providerChanged || serverChanged || needsDefaultResolution) {
       resolvedDefaultProviderId = null;
       void refreshModels();
     } else {
       modelSelect.value = settings.modelId;
+    }
+    if (serverChanged) {
+      // The stream is bound to the old URL/password; replace it with the new one.
+      void subscribeToEvents();
     }
     void pollHealth();
   }

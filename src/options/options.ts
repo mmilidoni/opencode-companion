@@ -1,5 +1,5 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
-import type { OpenCodeError } from "../shared/opencode.js";
+import type { FacadeAgent, OpenCodeError } from "../shared/opencode.js";
 import { getSettings, saveSettings } from "../shared/storage.js";
 import type { DeliveryMode } from "../shared/storage.js";
 
@@ -8,7 +8,6 @@ const serverUrlInput = document.getElementById("server-url") as HTMLInputElement
 const serverPasswordInput = document.getElementById("server-password") as HTMLInputElement;
 const deliveryModeSelect = document.getElementById("delivery-mode") as HTMLSelectElement;
 const autoOpenPanelCheckbox = document.getElementById("auto-open-panel") as HTMLInputElement;
-const autoSubmitTuiCheckbox = document.getElementById("auto-submit-tui") as HTMLInputElement;
 const pageCharLimitInput = document.getElementById("page-char-limit") as HTMLInputElement;
 const savedIndicator = document.getElementById("saved") as HTMLSpanElement;
 const agentSelect = document.getElementById("agent-select") as HTMLSelectElement;
@@ -20,7 +19,7 @@ const optionsStatus = document.getElementById("options-status") as HTMLSpanEleme
 interface ProviderOption {
   id: string;
   name: string;
-  models: Record<string, unknown>;
+  models: string[];
 }
 
 let providers: ProviderOption[] = [];
@@ -30,7 +29,6 @@ serverUrlInput.value = settings.serverUrl;
 serverPasswordInput.value = settings.serverPassword;
 deliveryModeSelect.value = settings.deliveryMode;
 autoOpenPanelCheckbox.checked = settings.autoOpenPanel;
-autoSubmitTuiCheckbox.checked = settings.autoSubmitTui;
 pageCharLimitInput.value = String(settings.pageCharLimit);
 
 // Seed saved selections as options so the selects render them before the
@@ -65,8 +63,6 @@ function describeError(error: OpenCodeError): string {
       return "Could not reach the server. Is `opencode serve` running?";
     case "server":
       return `Server error (${error.status}).`;
-    case "tui":
-      return error.detail;
   }
 }
 
@@ -75,7 +71,7 @@ function setOptionsStatus(text: string, isError: boolean): void {
   optionsStatus.dataset.state = isError ? "error" : "ok";
 }
 
-function populateAgents(agents: { name: string; description?: string }[]): void {
+function populateAgents(agents: FacadeAgent[]): void {
   const selected = agentSelect.value;
   agentSelect.textContent = "";
   const placeholder = document.createElement("option");
@@ -84,9 +80,8 @@ function populateAgents(agents: { name: string; description?: string }[]): void 
   agentSelect.appendChild(placeholder);
   for (const agent of agents) {
     const option = document.createElement("option");
-    option.value = agent.name;
+    option.value = agent.id;
     option.textContent = agent.name;
-    option.title = agent.description ?? "";
     agentSelect.appendChild(option);
   }
   agentSelect.value = selected;
@@ -94,7 +89,7 @@ function populateAgents(agents: { name: string; description?: string }[]): void 
 
 function populateModels(selectedModel: string): void {
   const provider = providers.find((p) => p.id === providerSelect.value);
-  const modelIds = Object.keys(provider?.models ?? {});
+  const modelIds = provider?.models ?? [];
   modelSelect.textContent = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
@@ -156,7 +151,7 @@ async function loadFromServer(silent: boolean): Promise<void> {
     }
     return;
   }
-  providers = providersResult.value.providers;
+  providers = providersResult.value;
   populateAgents(agentsResult.value);
   populateProviders();
   if (!silent) {
@@ -187,7 +182,6 @@ form.addEventListener("submit", (event) => {
       serverPassword: serverPasswordInput.value,
       deliveryMode: deliveryModeSelect.value as DeliveryMode,
       autoOpenPanel: autoOpenPanelCheckbox.checked,
-      autoSubmitTui: autoSubmitTuiCheckbox.checked,
       pageCharLimit,
       agent: agentSelect.value,
       modelProviderId: providerSelect.value,

@@ -6,7 +6,6 @@ import type { ContentKind, PromptSource } from "../shared/prompt.js";
 import { getSettings, DEFAULT_SETTINGS, addExtensionSessionId, setPendingSessionId, setPendingDraft } from "../shared/storage.js";
 import type { Settings } from "../shared/storage.js";
 import type { BackgroundMessage, CheckConnectionResultMessage } from "../shared/types.js";
-import type { TextPartInput } from "@opencode-ai/sdk/client";
 
 const HEALTH_CHECK_ALARM = "health-check";
 const BADGE_FLASH_MS = 2_500;
@@ -86,8 +85,6 @@ function describeSendError(error: OpenCodeError): string {
       return "Could not reach the opencode server — is `opencode serve` running?";
     case "server":
       return `Server error (${error.status}).`;
-    case "tui":
-      return error.detail;
   }
 }
 
@@ -95,25 +92,6 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
   const settings = await getSettings();
   const prompt = composePrompt(source, kind, content);
   const api = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
-  const parts: TextPartInput[] = [{ type: "text", text: prompt }];
-
-  if (settings.deliveryMode === "tui") {
-    const append = await api.appendPromptTui(prompt);
-    if (!append.ok) {
-      notify("send-error", "Send to OpenCode failed", describeSendError(append.error));
-      return;
-    }
-    if (settings.autoSubmitTui) {
-      const submit = await api.submitPromptTui();
-      if (!submit.ok) {
-        notify("send-error", "TUI submit failed", describeSendError(submit.error));
-        return;
-      }
-    }
-    notify("send-ok", "Sent to OpenCode", "Prompt appended to the opencode TUI.");
-    flashBadge();
-    return;
-  }
 
   const session = await api.createSession(source.title);
   if (!session.ok) {
@@ -142,7 +120,7 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
     settings.modelProviderId && settings.modelId
       ? { providerID: settings.modelProviderId, modelID: settings.modelId }
       : undefined;
-  const sent = await api.promptAsync(session.value, parts, { agent: settings.agent || undefined, model });
+  const sent = await api.prompt(session.value, prompt, { agent: settings.agent || undefined, model });
   if (!sent.ok) {
     notify("send-error", "Send to OpenCode failed", describeSendError(sent.error));
     return;

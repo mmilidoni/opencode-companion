@@ -2,7 +2,49 @@
 
 All notable changes to this project are documented in this file.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versions are [SemVer](https://semver.org/)-style while in 0.x.
+versions follow [SemVer](https://semver.org/).
+
+## [1.0.0] - 2026-10-19
+
+First stable release: the extension works with both opencode server generations.
+
+### Added
+
+- **opencode v2 support** — the extension now detects whether the server speaks
+  the v2 `/api/*` HTTP API or the legacy v1 API and adapts to either. v2
+  `opencode serve` always requires basic auth (username `opencode`; password
+  from `OPENCODE_SERVER_PASSWORD` or the one printed at startup), so the v1
+  health probe no longer reports a v2 server as unreachable.
+
+### Changed
+
+- **TUI delivery mode removed** — v2 dropped `/tui/append-prompt` and
+  `/tui/submit-prompt`. The remaining delivery modes are *New opencode session*
+  and *Draft in side panel*; the `autoSubmitTui` setting is gone and any stored
+  `tui` delivery mode falls back to draft.
+- The internal API facade is now version-agnostic: consumers talk in normalized
+  types (`FacadeSession`, `FacadeMessage`, `FacadeStreamEvent`, …) and the v1
+  (SDK) and v2 (raw `/api/*`) implementations normalize underneath.
+- v2 streaming is parsed from `/api/event` SSE frames (`session.text.*` deltas
+  accumulated into parts), with a debounced thread reload as a safety net.
+- Default provider/model resolution uses the server's default model on v2
+  (there is no merged config endpoint) instead of `GET /config`.
+
+### Fixed
+
+- **v2 threads rendered in reverse** - `/api/session/:id/message` returns the
+  thread newest-first, so the panel showed the newest message at the top and
+  the assistant's reply landed above the prompt, off-screen in a long thread.
+  The v2 client now restores chronological order.
+- **Streaming stayed dead after a settings change** - the panel's `/api/event`
+  subscription was opened with the URL/password it booted with; changing either
+  only rebuilt the request facade, so replies stopped arriving until the panel
+  was reopened. The subscription is now replaced when the server settings change.
+- **Failed assistant messages were silently dropped** - a run that ends in a
+  server-side error (expired provider key, aborted step) produces an assistant
+  message with no text parts, which both implementations mapped to `null`. The
+  panel showed the prompt with no reply and no explanation. Messages now carry
+  the reported error and the panel renders it in the thread.
 
 ## [0.3.0] - 2026-09-07
 
