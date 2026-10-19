@@ -19,10 +19,16 @@ opencode agent and chat with it in a side panel.
 ## Short description (≤ 132 characters)
 
 ```
-Send selected text and page content from any website into your local opencode agent. Unofficial, open-source.
+Send pages and selections from any site into your local opencode agent — now with opencode v2 support. Unofficial and open-source.
 ```
 
-(99 characters; matches `manifest.json` `description`.)
+(130 characters; matches `manifest.json` `description`.)
+
+Alternative, if you'd rather lead with the panel (115 characters):
+
+```
+Send any page or selection to your local opencode agent and chat in the side panel. opencode v2 and v1. Unofficial.
+```
 
 ## Detailed description
 
@@ -35,8 +41,27 @@ Everything happens between this extension and an opencode server you run
 yourself (by default `http://localhost:4096`). Nothing is sent to the
 extension developer or to any third party.
 
+### What's new in 1.0.0
+
+- **opencode v2 support** — newer opencode servers replaced the old HTTP API
+  and answer the old paths with the web UI's HTML, which made this extension
+  report "server unreachable" on an otherwise healthy server. It now detects
+  which API generation your server speaks and adapts to it, so both work in
+  full: sessions, live streaming, slash commands, agent and model pickers,
+  abort, delete. (v2 always requires basic auth with username `opencode`; enter
+  the password from `OPENCODE_SERVER_PASSWORD` or the one your server prints at
+  startup.)
+- **Two delivery modes, not three** — the TUI delivery mode is gone, because v2
+  removed the endpoints it used. The remaining modes are *New opencode session*
+  and *Draft in side panel*.
+- **Failed runs tell you why** — if a run dies server-side, for example because
+  a model provider key expired, the panel now shows the error in the thread
+  instead of showing nothing at all.
+
 ### Features
 
+- **Works with opencode v2 and v1** — detects your server's API generation and
+  adapts; basic auth (username `opencode`) is handled for either.
 - **Send selection** — right-click on highlighted text (or press
   `Ctrl+Shift+U`) to send it to opencode.
 - **Send page** — right-click anywhere to capture the whole page's text,
@@ -48,8 +73,8 @@ extension developer or to any third party.
   all extension-created ones).
 - **Markdown replies** — assistant messages render as sanitized markdown;
   your own messages stay plain text.
-- **Two delivery modes** — create a new opencode session, or append into an
-  opencode TUI you already have open.
+- **Two delivery modes** — create a new opencode session, or draft the prompt in
+  the side panel for review before sending.
 - **Agent & model defaults** — pick a default agent and model in options.
 - **Privacy by design** — captured web content is wrapped in explicit
   `UNTRUSTED CONTENT` delimiters with a guard note, because page content is

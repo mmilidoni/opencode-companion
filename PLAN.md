@@ -1,6 +1,6 @@
 # PLAN — "Companion for OpenCode" Chrome extension (MV3)
 
-Status: approved for phased execution. Last updated: 2026-09-05.
+Status: approved for phased execution. Last updated: 2026-10-19.
 Blast radius: **zero** — standalone repo; no code or dependencies shared with any
 other project.
 
@@ -18,13 +18,14 @@ Store.
 ### In scope (MVP)
 - Connect to a local `opencode serve` instance (default `http://localhost:4096`).
 - Context-menu + keyboard-shortcut sends: **selection** and **page**.
-- Two/three delivery modes:
+- Two delivery modes:
   - **Draft** (default): creates a session and opens the side panel with the
     composed prompt pre-filled — nothing is submitted until the user reviews
     and sends from the panel, so no tokens are spent on auto-submit.
-  - **Headless session**: `POST /session` → `prompt_async` (fire-and-forget).
-  - **TUI mode** (opt-in): push into a TUI the user already has open via
-    `/tui/append-prompt` (append-only by default; auto-submit is a config flag, off).
+  - **Headless session**: `POST /session` → prompt (fire-and-forget; the prompt
+    call enqueues and returns immediately on both API generations).
+- Works with **opencode v1 and v2** servers — the API generation is detected at
+  connect time (see §3).
 - Side panel: session list, message thread, prompt box, abort, streaming via `/event` SSE.
 - Chrome Web Store publication with minimal permissions.
 
@@ -60,32 +61,87 @@ differentiator is getting *browser* context (selection, page, URL, title) into t
 
 ---
 
-## 3. Verified API surface (opencode server, docs updated 2026-09-04)
+## 3. Verified API surface
+
+The extension supports **both** opencode API generations and picks one per
+server at connect time.
+
+### Detection
+
+| Probe | v1 server | v2 server |
+|---|---|---|
+| `GET /api/info` | 404/HTML | `200` `{ version, pid, urls, paths }` |
+| `GET /global/health` | `200` `{ healthy, version }` | SPA HTML at `200` |
+
+Validation is by JSON **shape**, not status: a v2 server answers the legacy
+paths with the web UI's HTML at `200`. `/api/info` is probed first (a JSON body
+with a string `version` ⇒ v2), then `/global/health` (a JSON body with a
+boolean `healthy` ⇒ v1).
+
+### v1 surface (`@opencode-ai/sdk/client`, verified 1.18.27)
 
 | Method | Path | Use |
 |---|---|---|
 | `GET` | `/global/health` | Connection check → `{ healthy, version }` |
-| `POST` | `/session` | Create session, body `{ parentID?, title? }` |
+| `POST` | `/session` | Create session, body `{ title }` |
 | `GET` | `/session` | List sessions |
-| `GET` | `/session/status` | Session statuses |
 | `GET` | `/session/:id/message` | Message thread (parts) |
-| `POST` | `/session/:id/message` | Send + wait (side-panel chat) |
-| `POST` | `/session/:id/prompt_async` | **Send, no wait, `204` — the MV3-safe send path** |
+| `POST` | `/session/:id/prompt_async` | Send, no wait, `204` |
 | `POST` | `/session/:id/abort` | Stop a running session |
-| `POST` | `/session/:id/command` | Slash commands (deferred) |
-| `GET` | `/event` | SSE bus — first event `server.connected`, then events |
-| `POST` | `/tui/append-prompt` | Append text to a running TUI's prompt |
-| `POST` | `/tui/submit-prompt` | Submit the TUI's current prompt (opt-in) |
-| `GET` | `/doc` | OpenAPI 3.1 spec (SDK source of truth) |
+| `POST` | `/session/:id/command` | Slash commands, body `{ command, arguments }` |
+| `DELETE` | `/session/:id` | Delete a session |
+| `GET` | `/event` | SSE bus |
+| `GET` | `/config` | Merged config → default model resolution |
+| `GET` | `/config/providers` | Provider list (with `models` maps) |
+| `GET` | `/app/agents` | Agent list |
 
-Auth: `OPENCODE_SERVER_PASSWORD` (HTTP basic auth, username defaults to
-`opencode`). Server flags: `--port` (4096), `--hostname` (127.0.0.1), `--cors`
-(only needed for `opencode web` at custom origins — the extension's
-`chrome-extension://` pages bypass CORS via host_permissions). Message bodies
-(`POST /session/:id/message`, `prompt_async`) take `parts: [{ type: "text", text }]`.
+### v2 surface (raw `fetch` against `/api/*`, verified against server 2.0.32)
 
-SDK: `@opencode-ai/sdk` → `createOpencodeClient({ baseUrl, fetch })`. Generated
-from the OpenAPI spec; environment-agnostic (accepts a custom `fetch`).
+| Method | Path | Use |
+|---|---|---|
+| `GET` | `/api/info` | Connection check + version |
+| `POST` | `/api/session` | Create session, body `{ title?, agent?, model? }` |
+| `GET` | `/api/session` | List sessions → `{ data, cursor }` |
+| `GET` | `/api/session/:id/message` | Message thread → `{ data, cursor }` (**newest-first**, capped at 50) |
+| `POST` | `/api/session/:id/prompt` | Send, body `{ text, agent?, model? }` (returns immediately; execution streams on SSE) |
+| `POST` | `/api/session/:id/interrupt` | Stop a running session (replaces `abort`) |
+| `POST` | `/api/session/:id/command` | Slash commands, body `{ name, text }`, `204` |
+| `DELETE` | `/api/session/:id` | Delete a session, `204` |
+| `GET` | `/api/event` | SSE bus (`session.text.*`, `session.reasoning.*`, `session.step.*`, `session.tool.*`, `session.usage.updated`) |
+| `GET` | `/api/model/default` (+ `/api/model`, `/api/provider`) | Default model / providers (no merged config on v2) |
+| `GET` | `/api/agent` | Agent list |
+
+v2 responses are wrapped (`{ data }`, `{ location, data }`, `{ data, cursor }`)
+and are unwrapped in the facade. v2 has no merged-config endpoint, so the
+default provider/model comes from `/api/model/default`. v2 event names are the
+**server's** (`session.text.delta`), which differ from the 1.19.x SDK's
+(`session.next.text.delta`), so the v2 client is hand-written rather than
+SDK-driven.
+
+### Auth
+
+Both generations use HTTP basic auth, username `opencode`. v1 reads the
+password from `OPENCODE_SERVER_PASSWORD`; v2 always requires auth and either
+reads `OPENCODE_SERVER_PASSWORD` or generates a random password printed as
+`server password <pw>` at startup. Sends from the service worker stay
+short-lived (`POST .../prompt`); SSE `/event` is consumed only from the panel.
+
+SDK: `@opencode-ai/sdk` → `createOpencodeClient({ baseUrl, fetch })`, deep
+imported as `@opencode-ai/sdk/client` only (the root entry pulls Node-only
+`cross-spawn`). The v2 path uses no SDK at all.
+
+Two v2 server behaviours the client must absorb:
+
+- `GET /api/session/:id/message` returns the thread **newest-first** (verified
+  against 2.0.32), unlike v1's chronological `session.messages()`. The v2 impl
+  restores chronological order so the panel renders top-to-bottom.
+- A failed run yields an `assistant` message with `content: []` and an `error`
+  object (`{type,message,status}`, e.g. `provider.auth` for an expired key), plus
+  an `idle` message with `outcome: "failed"`. Both implementations therefore map
+  a part-less assistant message to a facade message carrying `error` instead of
+  dropping it, and the panel renders it.
+- The SSE stream is bound to the URL/password it was opened with, so creating a
+  new facade for changed settings requires re-subscribing (`sidepanel`).
 
 ---
 
@@ -96,7 +152,7 @@ from the OpenAPI spec; environment-agnostic (accepts a custom `fetch`).
 ```
 Context menu "Send selection" ──┐
    (selectionText, pageUrl,     ├→ service worker (short-lived ONLY: health,
-    tab.title — no host perm)   │   session create, prompt_async, append-prompt)
+    tab.title — no host perm)   │   session create, prompt)
 Context menu "Send page" ───────┤
    (activeTab + scripting        │
     executeScript → innerText)   │
@@ -106,8 +162,10 @@ Side panel (extension page) ── SDK client: sessions, chat, /event SSE (no SW
 ```
 
 ### Non-negotiable design rules
-1. **Service worker does short-lived requests only.** `prompt_async` returns
-   `204` immediately — nothing long-lived survives the MV3 30s idle kill.
+1. **Service worker does short-lived requests only.** The prompt call enqueues
+   and returns immediately (v1 `prompt_async` → `204`; v2
+   `POST /api/session/:id/prompt` → the enqueued user message) — nothing
+   long-lived survives the MV3 30s idle kill.
 2. **SSE `/event` is consumed only from the side panel** (an extension page has
    no lifetime limit), via the SDK's `client.event.subscribe()` — never
    `EventSource` (it cannot send the basic-auth header). Never open an SSE
@@ -158,7 +216,11 @@ opencode-companion/
     │   └── options.css
     └── shared/
         ├── storage.ts            # typed chrome.storage.local wrapper
-        ├── opencode.ts           # SDK/client factory + basic-auth fetch
+        ├── facade.ts             # version-agnostic API types (the seam)
+        ├── result.ts             # Result<T> + OpenCodeError
+        ├── opencode.ts           # detection + v1/v2 facade factory
+        ├── opencode-v1.ts        # v1 impl (pinned @opencode-ai/sdk/client)
+        ├── opencode-v2.ts        # v2 impl (hand-written /api/* client + SSE)
         ├── prompt.ts             # prompt composition (untrusted-content wrapper)
         └── types.ts
 ```
@@ -226,11 +288,10 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 ### Phase 1 — Connection UX (1–2 days)
 - [ ] 1.1 `shared/storage.ts` — typed `chrome.storage.local` wrapper
       (`serverUrl` default `http://localhost:4096`, `serverPassword`, `deliveryMode`,
-      `autoSubmitTui`, `pageCharLimit`)
+      `pageCharLimit`)
 - [ ] 1.2 `shared/opencode.ts` — client factory: basic-auth fetch wrapper
-      (`btoa`), `health()`, `createSession()`, `promptAsync()`, `listSessions()`,
-      `listMessages()`, `abort()`, `appendPromptTui()`, `submitPromptTui()`;
-      prompts sent as `parts: [{ type: "text", text }]` (raw strings 400)
+      (`btoa`), `health()`, `createSession()`, `prompt()`, `listSessions()`,
+      `listMessages()`, `abort()`
 - [ ] 1.3 `popup/` — status dot, URL + password fields, Test connection (shows
       version), Save; `background` handles `check-connection` message
 - **Accept:** healthy server → green + version; wrong password → actionable error
@@ -243,9 +304,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
       source URL + page title + delimiter + guard note) → mode A: `createSession`
       (title = page title) → `promptAsync` (body `parts`) → badge flash +
       `chrome.notifications.create`.
-      Mode B (opt-in): `appendPromptTui`; **append-only unless `autoSubmitTui` is on**.
-      TUI mode requires the TUI launched with a fixed port (`opencode --port 4096`) —
-      `opencode serve` and a TUI cannot share the same port/URL.
+      (TUI delivery mode was removed for the v2 migration — see `CHANGELOG.md`.)
 - [ ] 2.3 Page handler: `activeTab` + `scripting.executeScript` → `capture.ts`
       (`document.title` + URL + `document.body.innerText` truncated at
       `pageCharLimit`, default 20 000) → same send path
@@ -255,8 +314,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
       (no silent page fallback)
 - **Accept:** select text on any page → send → `curl localhost:4096/session` shows the
   new session and message parts contain the selection + source URL + untrusted
-  delimiters; TUI mode visibly appends into a running `opencode` TUI (fixed `--port`);
-  page mode sends truncated `innerText`.
+  delimiters; page mode sends truncated `innerText`.
 - **Rollback:** drop Phase 2 branch; Phases 0–1 still shipped.
 
 ### Phase 3 — Side panel: sessions + streaming chat (3–5 days)
@@ -293,15 +351,15 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 
 | Risk | L×I | Mitigation |
 |---|---|---|
-| **Prompt injection via page content** — a malicious page's text, sent to an agent with shell access, could carry hostile instructions | Med × High | Untrusted-content delimiters + guard note in every composed prompt; TUI mode append-only by default; auto-submit flag off by default |
-| opencode API churn (`/tui/*` is IDE-plugin-coupled; server API evolves) | Med × Med | Pin SDK version; headless session mode is the default (documented public surface); TUI mode labeled experimental in options |
+| **Prompt injection via page content** — a malicious page's text, sent to an agent with shell access, could carry hostile instructions | Med × High | Untrusted-content delimiters + guard note in every composed prompt; draft mode is the default, so nothing is submitted without a review |
+| opencode API churn (v2 replaced the v1 HTTP surface wholesale) | Med × Med | Version detection + a version-agnostic facade (`shared/facade.ts`); v1 stays on the pinned SDK, v2 on a hand-written `/api/*` client |
 | MV3 service-worker lifetime kills long connections | Was High → eliminated by design | `prompt_async` (204) in SW; SSE only in side panel (§4 rules) |
 | SDK incompatible with service worker | Low × Med | Phase 0 decision gate; raw-fetch fallback for the §3 endpoints |
 | CWS review friction | Low × Med | No `<all_urls>`; localhost-only hosts; strong privacy story; "X for OpenCode" third-party naming already established on CWS; "unofficial" + repo link in description |
 | Password mishandling | Low × Med | `chrome.storage.local` only; never logged; basic-auth header constructed in memory |
 | `activeTab` grant surprises (page send without user gesture) | Low × Med | All sends originate from a user gesture (context menu, shortcut, panel button) |
 | Draft never sent (panel closed; orphaned `pendingDraft`) | Low × Low | `pendingDraft`/`pendingSessionId` are inert single-entry keys, cleared on the next panel load; draft mode also removes the auto-run exposure from the headless path |
-| TUI mode silently broken (TUI on a random port / no TUI attached to that server) | Med × Med | README + options mandate `opencode --port <n>`; surface an actionable "TUI unreachable" error |
+| v2 event names drift from the SDK's (server 2.0.32 uses `session.text.delta`, the 1.19.x SDK `session.next.text.delta`) | Med × Med | v2 SSE is parsed by a hand-written mapper against the live server's names, plus a debounced thread reload as a safety net |
 | SSE auth impossible via `EventSource` | Med × High | Eliminated by design — SDK `event.subscribe()` (fetch-streaming) in the panel (§3.2) |
 | SDK lacks `promptAsync` | Low × Med | Phase 0 gate verifies; raw-fetch fallback for that one endpoint |
 
@@ -367,7 +425,7 @@ uses `chrome.sidePanel.open()` (Chrome 116+, hence `minimum_chrome_version: "116
 |---|---|---|
 | Name | "Companion for OpenCode", repo `opencode-companion` | Before CWS submission |
 | Client | `@opencode-ai/sdk` via `createOpencodeClient({ baseUrl, fetch })` + raw-fetch fallback | Phase 0 gate fails |
-| Delivery | Headless session default; TUI mode opt-in → **draft mode default (2026-09-07)** | User feedback |
+| Delivery | Headless session default; TUI mode opt-in → draft mode default (2026-09-07) → **TUI mode removed, v1+v2 support (2026-10-19)** | User feedback |
 | Toolchain | esbuild + hand-written manifest (no wxt) | If multi-browser or HMR needed |
 | Keybinding | Ctrl+Shift+U (send selection) | After first real usage |
 | Phase 3 scope | Ship side panel + streaming chat in v0.1 | After first real usage |
@@ -447,7 +505,7 @@ the drift warned about in §9).
 - **F5 — Packaging + AMO (½ day):** `web-ext build`/`sign` → `.xpi`; AMO
   listing from existing `STORE.md`/`PRIVACY.md`; human review adds days of
   latency, zero dev effort.
-- **F6 — Verification (½–1 day):** both delivery modes (headless + TUI),
+- **F6 — Verification (½–1 day):** both delivery modes (headless + draft),
   keyboard shortcut, notifications, sidebar open/close, reconnect after server
   restart, second machine.
 
