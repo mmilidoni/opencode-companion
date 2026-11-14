@@ -79,8 +79,11 @@ export type FacadeStreamEvent =
 
 /** The per-flavor operations, shared by the v1 and v2 implementations. */
 export interface ServerApi {
-  createSession(title: string): Promise<Result<string>>;
+  /** On v2 the model/agent belong to the session and are applied at creation. */
+  createSession(title: string, opts?: PromptOptions): Promise<Result<string>>;
   prompt(sessionId: string, text: string, opts?: PromptOptions): Promise<Result<void>>;
+  /** Point an existing session at a model (v1: no-op, its prompts carry the model). */
+  setModel(sessionId: string, model: FacadeModelRef): Promise<Result<void>>;
   listSessions(): Promise<Result<FacadeSession[]>>;
   listMessages(sessionId: string): Promise<Result<FacadeMessage[]>>;
   abort(sessionId: string): Promise<Result<void>>;

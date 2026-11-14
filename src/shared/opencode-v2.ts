@@ -335,23 +335,52 @@ export function createV2Api(
     }
   }
 
-  return {
-    async createSession(title) {
-      return run(async () => {
-        const res = await request<{ data: { id: string } }>("/session", { method: "POST", body: { title } });
-        return res.data.id;
+  // Attach a model to an existing session. The current v2 prompt body has no model
+  // field; the session is the model's home. Best-effort: servers without the
+  // endpoint fall through and keep whatever model the session was created with.
+  async function setModelQuiet(sessionId: string, model: FacadeModelRef): Promise<void> {
+    try {
+      await request<unknown>(`${sessionPath(sessionId)}/model`, {
+        method: "POST",
+        body: { model: { id: model.modelID, providerID: model.providerID } },
       });
-    },
-    async prompt(sessionId, text, opts) {
+    } catch {
+      // Older v2 builds lack the endpoint; the create-time model (or server default) still applies.
+    }
+  }
+
+  return {
+    async createSession(title, opts) {
       return run(async () => {
-        const body: Record<string, unknown> = { text };
+        const body: Record<string, unknown> = { title };
         if (opts?.agent) {
           body.agent = opts.agent;
         }
         if (opts?.model?.providerID && opts.model.modelID) {
           body.model = { id: opts.model.modelID, providerID: opts.model.providerID };
         }
-        await request<unknown>(`${sessionPath(sessionId)}/prompt`, { method: "POST", body });
+        const res = await request<{ data: { id: string } }>("/session", { method: "POST", body });
+        return res.data.id;
+      });
+    },
+    async setModel(sessionId, model) {
+      return run(async () => {
+        await request<unknown>(`${sessionPath(sessionId)}/model`, {
+          method: "POST",
+          body: { model: { id: model.modelID, providerID: model.providerID } },
+        });
+      });
+    },
+    async prompt(sessionId, text, opts) {
+      return run(async () => {
+        // v2 prompt bodies accept neither `model` nor `agent` (unknown fields are
+        // silently dropped, which used to discard the user's selection). The model
+        // belongs to the session; sync it before prompting so mid-session model
+        // switches take effect.
+        if (opts?.model?.providerID && opts.model.modelID) {
+          await setModelQuiet(sessionId, opts.model);
+        }
+        await request<unknown>(`${sessionPath(sessionId)}/prompt`, { method: "POST", body: { text } });
       });
     },
     async listSessions() {

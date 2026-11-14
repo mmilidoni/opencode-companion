@@ -170,11 +170,14 @@ export function createOpenCodeApi(serverUrl: string, serverPassword: string): Op
 
   return {
     health,
-    async createSession(title) {
-      return (await resolveImpl()).createSession(title);
+    async createSession(title, opts) {
+      return (await resolveImpl()).createSession(title, opts);
     },
     async prompt(sessionId, text, opts) {
       return (await resolveImpl()).prompt(sessionId, text, opts);
+    },
+    async setModel(sessionId, model) {
+      return (await resolveImpl()).setModel(sessionId, model);
     },
     async listSessions() {
       return (await resolveImpl()).listSessions();

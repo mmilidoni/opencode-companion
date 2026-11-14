@@ -1,5 +1,5 @@
 import { createOpenCodeApi } from "../shared/opencode.js";
-import type { FacadeCommand, FacadeMessage, FacadeStreamEvent, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
+import type { FacadeCommand, FacadeMessage, FacadeModelRef, FacadeStreamEvent, OpenCodeApi, OpenCodeError } from "../shared/opencode.js";
 import { getSettings, saveSettings, addExtensionSessionId, removeExtensionSessionIds, getExtensionSessionIds, getPendingSessionId, clearPendingSessionId, getPendingDraft, clearPendingDraft } from "../shared/storage.js";
 import type { PendingDraft, Settings } from "../shared/storage.js";
 import DOMPurify from "dompurify";
@@ -259,8 +259,19 @@ async function selectSession(id: string): Promise<void> {
   renderThread();
 }
 
+/** The model the user selected ("" provider falls back to the server's default provider). */
+function currentModel(): FacadeModelRef | undefined {
+  const providerId = settings.modelProviderId || resolvedDefaultProviderId;
+  return providerId && settings.modelId ? { providerID: providerId, modelID: settings.modelId } : undefined;
+}
+
 async function createNewSession(): Promise<void> {
-  const result = await api.createSession("New session");
+  // On v2 the model and agent belong to the session, so new sessions start with the
+  // configured selection instead of the server default.
+  const result = await api.createSession("New session", {
+    agent: settings.agent || undefined,
+    model: currentModel(),
+  });
   if (!result.ok) {
     setConnected(false);
     return;
@@ -482,11 +493,7 @@ async function sendPrompt(): Promise<void> {
     return;
   }
   const message = draft === null ? text : text ? `${text}\n\n${draft.prompt}` : draft.prompt;
-  const providerId = settings.modelProviderId || resolvedDefaultProviderId;
-  const model =
-    providerId && settings.modelId
-      ? { providerID: providerId, modelID: settings.modelId }
-      : undefined;
+  const model = currentModel();
   const result = await api.prompt(selectedSessionId, message, {
     agent: settings.agent || undefined,
     model,
