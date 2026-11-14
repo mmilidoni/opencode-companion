@@ -139,11 +139,15 @@ export function createV1Api(
   }
 
   return {
-    async createSession(title) {
+    async createSession(title, _opts) {
       return run(async () => {
         const session = await client.session.create({ body: { title }, throwOnError: true });
         return session.data.id;
       });
+    },
+    // v1 prompts carry the model per message, so there is no session-level model to set.
+    async setModel() {
+      return { ok: true, value: undefined };
     },
     async prompt(sessionId, text, opts) {
       return run(async () => {

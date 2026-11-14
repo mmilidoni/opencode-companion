@@ -92,8 +92,13 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
   const settings = await getSettings();
   const prompt = composePrompt(source, kind, content);
   const api = createOpenCodeApi(settings.serverUrl, settings.serverPassword);
+  const model =
+    settings.modelProviderId && settings.modelId
+      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
+      : undefined;
 
-  const session = await api.createSession(source.title);
+  // On v2 the model and agent belong to the session, so they are set at creation.
+  const session = await api.createSession(source.title, { agent: settings.agent || undefined, model });
   if (!session.ok) {
     notify("send-error", "Send to OpenCode failed", describeSendError(session.error));
     return;
@@ -116,10 +121,6 @@ async function composeAndSend(kind: ContentKind, content: string, source: Prompt
     return;
   }
 
-  const model =
-    settings.modelProviderId && settings.modelId
-      ? { providerID: settings.modelProviderId, modelID: settings.modelId }
-      : undefined;
   const sent = await api.prompt(session.value, prompt, { agent: settings.agent || undefined, model });
   if (!sent.ok) {
     notify("send-error", "Send to OpenCode failed", describeSendError(sent.error));
